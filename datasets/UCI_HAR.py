@@ -21,62 +21,89 @@ import pandas as pd
 import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from imblearn.over_sampling import SMOTE
+from tensorflow.keras.utils import to_categorical
 
 class UCI_HARDataset:
     """
     Handler for the UCI Human Activity Recognition dataset for Zero-Shot HAR.
     
-    The dataset contains data from 30 subjects performing 6 different activities:
-    0: walking
-    1: sitting
-    2: standing
-    3: laying
-    4: walking upstairs
-    5: walking downstairs
+    The original dataset activities:
+    0: WALKING
+    1: WALKING_UPSTAIRS
+    2: WALKING_DOWNSTAIRS
+    3: SITTING
+    4: STANDING
+    5: LAYING
+    
+    After remapping:
+    0: walking (was 0)
+    1: sitting (was 3)
+    2: standing (was 4)
+    3: laying (was 5)
+    4: walking upstairs (was 1)
+    5: walking downstairs (was 2)
     """
     
-    # Mapping from activity labels to names
+    # Original to new label remapping (exactly as in paste.txt)
+    OLD_TO_NEW_LABELS = {
+        0: 0,  # walking
+        3: 1,  # sitting
+        4: 2,  # standing
+        5: 3,  # laying
+        1: 4,  # walking upstairs
+        2: 5   # walking downstairs
+    }
+    
+    # New label mapping
     LABEL_MAP = {
         0: "walking",
         1: "sitting",
-        2: "standing",
+        2: "standing", 
         3: "laying",
         4: "walking upstairs",
         5: "walking downstairs"
     }
     
-    # In zero-shot setting, we define seen and unseen classes
-    SEEN_LABELS = [0, 1, 2, 3]
-    UNSEEN_LABELS = [4, 5]
+    # In zero-shot setting, these are the seen and unseen classes after remapping
+    SEEN_LABELS = [0, 1, 2, 3]      # walking, sitting, standing, laying
+    UNSEEN_LABELS = [4, 5]          # walking upstairs, walking downstairs
     
-    # Manual mapping between unseen and seen activities based on similarity
-    MANUAL_MAPPINGS = {
-        4: [0],   # walking upstairs -> walking
-        5: [0]    # walking downstairs -> walking
-    }
-    
-    def __init__(self, data_path, zero_shot=True, split='train', apply_smote=True):
+    def __init__(self, data_path, zero_shot=True, split='train'):
         """
         Initialize the UCI HAR dataset.
         
         Args:
             data_path (str): Path to the UCI HAR dataset.
             zero_shot (bool): If True, split the data into seen and unseen activities.
-            split (str): One of 'train', 'val', 'test', 'test_seen', or 'test_unseen'.
-            apply_smote (bool): Whether to apply SMOTE to balance the class distribution.
+            split (str): One of 'train', 'val', 'test_seen', or 'test_unseen'.
         """
         self.data_path = data_path
         self.zero_shot = zero_shot
         self.split = split
-        self.apply_smote = apply_smote
         self.label_map = self.LABEL_MAP
         
         # Load and preprocess the data
         self._load_data()
         
+    def _remap_labels(self, labels):
+        """
+        Remap original UCI HAR labels to new label scheme as done in paste.txt.
+        
+        Args:
+            labels (numpy.ndarray): Original labels.
+            
+        Returns:
+            numpy.ndarray: Remapped labels.
+        """
+        # Create a copy to avoid modifying the original array
+        remapped = np.copy(labels)
+        # Apply mapping to each value
+        for old_label, new_label in self.OLD_TO_NEW_LABELS.items():
+            remapped[labels == old_label] = new_label
+        return remapped
+        
     def _load_data(self):
-        """Load the UCI HAR dataset and preprocess it according to the notebook approach."""
+        """Load the UCI HAR dataset and preprocess it according to paste.txt approach."""
         # Check if dataset exists
         if not os.path.exists(self.data_path):
             print(f"Dataset not found at {self.data_path}. Please download the UCI HAR dataset.")
@@ -90,11 +117,11 @@ class UCI_HARDataset:
         train_body_gyro_y = np.loadtxt(os.path.join(self.data_path, 'train/Inertial Signals/body_gyro_y_train.txt'))
         train_body_gyro_z = np.loadtxt(os.path.join(self.data_path, 'train/Inertial Signals/body_gyro_z_train.txt'))
         
-        # Stack the signals
+        # Stack the signals as done in paste.txt
         X_train = np.stack([train_body_acc_x, train_body_acc_y, train_body_acc_z, 
                            train_body_gyro_x, train_body_gyro_y, train_body_gyro_z], axis=2)
         
-        # Load training labels and adjust from 1-indexed to 0-indexed
+        # Load training labels and adjust from 1-indexed to 0-indexed as in paste.txt
         y_train = np.loadtxt(os.path.join(self.data_path, 'train/y_train.txt'))
         y_train = y_train - 1  # Adjust from 1-indexed to 0-indexed
         y_train = y_train.astype(int)
@@ -116,15 +143,15 @@ class UCI_HARDataset:
         y_test = y_test - 1  # Adjust from 1-indexed to 0-indexed
         y_test = y_test.astype(int)
         
-        # Apply SMOTE to balance class distribution if requested
-        if self.apply_smote:
-            X_train, y_train = self._apply_smote(X_train, y_train)
+        # Remap labels according to OLD_TO_NEW_LABELS mapping as in paste.txt
+        y_train = self._remap_labels(y_train)
+        y_test = self._remap_labels(y_test)
         
         # Standardize the data
         X_train = self._standardize_3d_tensor(X_train)
         X_test = self._standardize_3d_tensor(X_test)
         
-        # Handle zero-shot setting by reorganizing data as in the notebook
+        # Handle zero-shot setting by reorganizing data as in paste.txt
         if self.zero_shot:
             # Identify seen and unseen indices for both train and test sets
             train_seen_idx = np.where(np.isin(y_train, self.SEEN_LABELS))[0]
@@ -143,7 +170,7 @@ class UCI_HARDataset:
             X_test_unseen = X_test[test_unseen_idx]
             y_test_unseen = y_test[test_unseen_idx]
             
-            # Combine all seen data for training/validation
+            # Combine all seen data for training/validation as in paste.txt
             new_X_train = np.concatenate([X_train_seen, X_test_seen], axis=0)
             new_y_train = np.concatenate([y_train_seen, y_test_seen], axis=0)
             
@@ -179,7 +206,16 @@ class UCI_HARDataset:
             X_accel, X_gyro, new_y_train, test_size=0.2, random_state=42, stratify=new_y_train
         )
         
-        # Set the final data based on requested split
+        # Calculate maximum label value and number of classes
+        max_label = max(
+            np.max(y_train_split) if len(y_train_split) > 0 else -1,
+            np.max(y_val) if len(y_val) > 0 else -1,
+            np.max(new_y_test_seen) if len(new_y_test_seen) > 0 else -1,
+            np.max(new_y_test_unseen) if len(new_y_test_unseen) > 0 else -1
+        )
+        self.num_classes = max_label + 1
+        
+        # Store data according to the requested split
         if self.split == 'train':
             self.accel_data = X_accel_train
             self.gyro_data = X_gyro_train
@@ -202,50 +238,10 @@ class UCI_HARDataset:
                 self.accel_data = np.array([])
                 self.gyro_data = np.array([])
                 self.labels = np.array([])
-        else:  # 'test' split - use both seen and unseen
-            if self.zero_shot:
-                # Combine seen and unseen test data
-                self.accel_data = np.concatenate([X_accel_test_seen, X_accel_test_unseen], axis=0)
-                self.gyro_data = np.concatenate([X_gyro_test_seen, X_gyro_test_unseen], axis=0)
-                self.labels = np.concatenate([new_y_test_seen, new_y_test_unseen], axis=0)
-            else:
-                # Use seen test data only for non-zero-shot
-                self.accel_data = X_accel_test_seen
-                self.gyro_data = X_gyro_test_seen
-                self.labels = new_y_test_seen
-    
-    def _apply_smote(self, X, y):
-        """
-        Apply SMOTE to balance class distribution.
-        
-        Args:
-            X (numpy.ndarray): Feature data with shape (samples, window_size, features).
-            y (numpy.ndarray): Label data with shape (samples,).
-            
-        Returns:
-            tuple: (X_resampled, y_resampled) with balanced class distribution.
-        """
-        print("Applying SMOTE for class balance...")
-        
-        # Get original shape information
-        n_samples, window_size, n_features = X.shape
-        
-        # Reshape to 2D for SMOTE
-        X_reshaped = X.reshape(n_samples, window_size * n_features)
-        
-        # Apply SMOTE
-        smote = SMOTE(random_state=42)
-        X_resampled, y_resampled = smote.fit_resample(X_reshaped, y)
-        
-        # Reshape back to 3D
-        X_resampled = X_resampled.reshape(-1, window_size, n_features)
-        
-        print(f"Class distribution after SMOTE: {np.bincount(y_resampled)}")
-        return X_resampled, y_resampled
     
     def _standardize_3d_tensor(self, data):
         """
-        Standardize a 3D tensor.
+        Standardize a 3D tensor as done in paste.txt.
         
         Args:
             data (numpy.ndarray): 3D tensor with shape (samples, window_size, features).
@@ -265,6 +261,15 @@ class UCI_HARDataset:
         
         return standardized_data
     
+    def get_onehot_labels(self):
+        """
+        Convert labels to one-hot encoding.
+        
+        Returns:
+            numpy.ndarray: One-hot encoded labels.
+        """
+        return to_categorical(self.labels, num_classes=self.num_classes)
+    
     def get_tf_dataset(self, batch_size=64, shuffle=True):
         """
         Convert the data to a TensorFlow dataset.
@@ -282,12 +287,8 @@ class UCI_HARDataset:
             'gyro': self.gyro_data
         }
         
-        # 중요: 레이블을 int32로 명시적으로 변환
-        labels = tf.cast(self.labels, tf.int32)
-        
-        # Convert labels to one-hot encoding
-        num_classes = max(max(self.SEEN_LABELS), max(self.UNSEEN_LABELS)) + 1
-        labels_onehot = tf.keras.utils.to_categorical(labels, num_classes=num_classes)
+        # 원-핫 인코딩 대신 정수 라벨 사용 - 이 부분이 변경됨!
+        labels = self.labels
         
         # Create a TensorFlow dataset
         dataset = tf.data.Dataset.from_tensor_slices((features, labels))
@@ -358,23 +359,9 @@ if __name__ == "__main__":
         percent = count / len(train_set.labels) * 100
         print(f"  {train_set.label_map[label]}: {count} samples ({percent:.1f}%)")
     
-    print("\nValidation set activity distribution:")
-    for label in np.unique(val_set.labels):
-        count = np.sum(val_set.labels == label)
-        percent = count / len(val_set.labels) * 100
-        print(f"  {val_set.label_map[label]}: {count} samples ({percent:.1f}%)")
-    
-    print("\nTest (Seen) set activity distribution:")
-    for label in np.unique(test_seen_set.labels):
-        count = np.sum(test_seen_set.labels == label)
-        percent = count / len(test_seen_set.labels) * 100
-        print(f"  {test_seen_set.label_map[label]}: {count} samples ({percent:.1f}%)")
-    
-    print("\nTest (Unseen) set activity distribution:")
-    for label in np.unique(test_unseen_set.labels):
-        count = np.sum(test_unseen_set.labels == label)
-        percent = count / len(test_unseen_set.labels) * 100
-        print(f"  {test_unseen_set.label_map[label]}: {count} samples ({percent:.1f}%)")
+    print("\nUnseen labels in zero-shot setting:")
+    for label in train_set.UNSEEN_LABELS:
+        print(f"  {label}: {train_set.label_map[label]}")
     
     # Plot activity distribution
     plt.figure(figsize=(15, 10))
@@ -383,32 +370,32 @@ if __name__ == "__main__":
     sns.countplot(x=train_set.labels)
     plt.title("Train Activity Distribution")
     plt.xlabel("Activity")
-    plt.xticks(range(len(np.unique(train_set.labels))), 
-               [train_set.label_map[i] for i in np.unique(train_set.labels)], 
+    plt.xticks(range(len(train_set.LABEL_MAP)), 
+               [train_set.label_map[i] for i in range(len(train_set.LABEL_MAP))], 
                rotation=45)
     
     plt.subplot(2, 2, 2)
     sns.countplot(x=val_set.labels)
     plt.title("Validation Activity Distribution")
     plt.xlabel("Activity")
-    plt.xticks(range(len(np.unique(val_set.labels))), 
-               [val_set.label_map[i] for i in np.unique(val_set.labels)], 
+    plt.xticks(range(len(train_set.LABEL_MAP)), 
+               [train_set.label_map[i] for i in range(len(train_set.LABEL_MAP))], 
                rotation=45)
     
     plt.subplot(2, 2, 3)
     sns.countplot(x=test_seen_set.labels)
     plt.title("Test (Seen) Activity Distribution")
     plt.xlabel("Activity")
-    plt.xticks(range(len(np.unique(test_seen_set.labels))), 
-               [test_seen_set.label_map[i] for i in np.unique(test_seen_set.labels)], 
+    plt.xticks(range(len(train_set.LABEL_MAP)), 
+               [train_set.label_map[i] for i in range(len(train_set.LABEL_MAP))], 
                rotation=45)
     
     plt.subplot(2, 2, 4)
     sns.countplot(x=test_unseen_set.labels)
     plt.title("Test (Unseen) Activity Distribution")
     plt.xlabel("Activity")
-    plt.xticks(range(len(np.unique(test_unseen_set.labels))), 
-               [test_unseen_set.label_map[i] for i in np.unique(test_unseen_set.labels)], 
+    plt.xticks(range(len(train_set.LABEL_MAP)), 
+               [train_set.label_map[i] for i in range(len(train_set.LABEL_MAP))], 
                rotation=45)
     
     plt.tight_layout()
@@ -417,9 +404,9 @@ if __name__ == "__main__":
     
     print("\nActivity distribution plot saved as 'uci_har_distribution.png'")
     
-    # Check data shapes
-    for x, y in train_dataset.take(1):
-        print("\nSample data shapes:")
-        print(f"Accelerometer: {x['accel'].shape}")
-        print(f"Gyroscope: {x['gyro'].shape}")
-        print(f"Labels: {y.shape}")
+    # Check data shapes from dataset
+    for features, labels in train_dataset.take(1):
+        print("\nSample batch shapes:")
+        print(f"Accelerometer: {features['accel'].shape}")
+        print(f"Gyroscope: {features['gyro'].shape}")
+        print(f"Labels: {labels.shape}")

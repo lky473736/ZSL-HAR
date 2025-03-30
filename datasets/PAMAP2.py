@@ -4,6 +4,7 @@
 """
 PAMAP2 dataset handler for Zero-Shot HAR.
 Loads and processes the PAMAP2 dataset with zero-shot learning capabilities.
+Compatible with the provided notebook implementation.
 """
 
 import os
@@ -21,7 +22,7 @@ class PAMAP2Dataset(BaseDataset):
     """PAMAP2 dataset handler for HAR with zero-shot learning capability."""
     
     def __init__(self, data_path, window_width=128, stride=64, 
-                 clean=True, include_null=True, zero_shot=True, split='train'):
+                 clean=True, include_null=False, zero_shot=True, split='train'):
         """
         Initialize the PAMAP2 dataset.
         
@@ -32,6 +33,7 @@ class PAMAP2Dataset(BaseDataset):
             clean (bool): Whether to filter out windows with mixed activities
             include_null (bool): Whether to include null class (activity ID 0)
             zero_shot (bool): Whether to use zero-shot learning setup
+            split (str): Which split to use ('train', 'val', or 'test')
         """
         super().__init__(data_path, window_width, stride, sampling_rate=50)
         
@@ -62,7 +64,7 @@ class PAMAP2Dataset(BaseDataset):
             17: "Playing Soccer"
         }
         
-        # Original -> sequential ID mapping
+        # Original -> sequential ID mapping (matching the notebook implementation)
         self.original_label_map = {
             1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 
             10: 5, 9: 6, 6: 7, 7: 8, 
@@ -167,7 +169,7 @@ class PAMAP2Dataset(BaseDataset):
         df.drop(["timestamp"], axis=1, inplace=True)
         df.drop(["hand_temp", "heart_rate", "chest_temp", "ankle_temp"], axis=1, inplace=True)
         
-        # Drop magnetometer data
+        # Drop magnetometer data (consistent with notebook)
         df = df[[feature for feature in df.columns if "mag" not in feature]]
         
         # Handle missing values
@@ -193,7 +195,9 @@ class PAMAP2Dataset(BaseDataset):
         
         # Fill any remaining NaN values
         df = df.fillna(method='bfill')
-        df = df.fillna(df.mean())
+        remaining_nulls = df.isnull().sum().sum()
+        if remaining_nulls > 0:
+            df = df.fillna(df.mean())
         
         # Process data according to zero-shot setting
         if self.zero_shot:
@@ -241,7 +245,7 @@ class PAMAP2Dataset(BaseDataset):
         X_seen_smote_df = pd.DataFrame(X_seen_smote_scaled, columns=X_seen.columns)
         X_unseen_df = pd.DataFrame(X_unseen_scaled, columns=X_unseen.columns)
         
-        # Extract accelerometer and gyroscope data for ankle IMU (according to your original code)
+        # Extract accelerometer and gyroscope data for ankle IMU (according to notebook)
         accel_cols = ["ankle_acc_x", "ankle_acc_y", "ankle_acc_z"]
         gyro_cols = ["ankle_gyro_x", "ankle_gyro_y", "ankle_gyro_z"]
         
@@ -264,27 +268,47 @@ class PAMAP2Dataset(BaseDataset):
         
         # Split seen data into train and validation
         X_accel_train, X_accel_val, X_gyro_train, X_gyro_val, y_train, y_val = train_test_split(
-        X_accel_seq_seen, X_gyro_seq_seen, y_seq_seen, 
-        test_size=0.2, random_state=42, stratify=y_seq_seen
+            X_accel_seq_seen, X_gyro_seq_seen, y_seq_seen, 
+            test_size=0.2, random_state=42, stratify=y_seq_seen
         )
         
-        # 데이터 저장 - split 값에 따라 다른 처리
+        # Further split train data to get a test set for seen classes
+        X_accel_train, X_accel_test_seen, X_gyro_train, X_gyro_test_seen, y_train, y_test_seen = train_test_split(
+            X_accel_train, X_gyro_train, y_train, 
+            test_size=0.2, random_state=42, stratify=y_train
+        )
+        
+        # Store data based on split value
         if self.split == 'train':
-            # 훈련 데이터만 설정
             self.data = np.concatenate([X_accel_train, X_gyro_train], axis=1)
             self.labels = y_train.astype(np.int32)
         elif self.split == 'val':
-            # 검증 데이터만 설정
             self.data = np.concatenate([X_accel_val, X_gyro_val], axis=1)
             self.labels = y_val.astype(np.int32)
-        else:  # 'test'
-            # 테스트 데이터만 설정
+        elif self.split == 'test_seen':
+            self.data = np.concatenate([X_accel_test_seen, X_gyro_test_seen], axis=1)
+            self.labels = y_test_seen.astype(np.int32)
+        else:  # 'test_unseen'
             self.data = np.concatenate([X_accel_seq_unseen, X_gyro_seq_unseen], axis=1)
             self.labels = y_seq_unseen.astype(np.int32)
         
-        print(f"Train set: {self.train_data.shape}, {self.train_label.shape}")
-        print(f"Validation set: {self.val_data.shape}, {self.val_label.shape}")
-        print(f"Test set (unseen): {self.test_data.shape}, {self.test_label.shape}")
+        # Store all datasets for convenience
+        self.train_data = np.concatenate([X_accel_train, X_gyro_train], axis=1)
+        self.train_labels = y_train.astype(np.int32)
+        
+        self.val_data = np.concatenate([X_accel_val, X_gyro_val], axis=1)
+        self.val_labels = y_val.astype(np.int32)
+        
+        self.test_seen_data = np.concatenate([X_accel_test_seen, X_gyro_test_seen], axis=1)
+        self.test_seen_labels = y_test_seen.astype(np.int32)
+        
+        self.test_unseen_data = np.concatenate([X_accel_seq_unseen, X_gyro_seq_unseen], axis=1)
+        self.test_unseen_labels = y_seq_unseen.astype(np.int32)
+        
+        print(f"Train set: {self.train_data.shape}, {self.train_labels.shape}")
+        print(f"Validation set: {self.val_data.shape}, {self.val_labels.shape}")
+        print(f"Test set (seen): {self.test_seen_data.shape}, {self.test_seen_labels.shape}")
+        print(f"Test set (unseen): {self.test_unseen_data.shape}, {self.test_unseen_labels.shape}")
     
     def _process_standard_data(self, df):
         """
@@ -324,6 +348,7 @@ class PAMAP2Dataset(BaseDataset):
         
         # Apply SMOTE for class balancing on training data
         if len(df_train) > 0:
+            print ("SMOTE")
             smote = SMOTE(random_state=42)
             X_train_smote, y_train_smote = smote.fit_resample(X_train, y_train)
         else:
@@ -373,22 +398,107 @@ class PAMAP2Dataset(BaseDataset):
         X_gyro_seq_test, _ = self.split_windows(X_gyro_test, y_test.values, 
                                                overlap=True, clean=self.clean)
         
-        # Store data
+        # Store data based on requested split
+        if self.split == 'train':
+            self.data = np.concatenate([X_accel_seq_train, X_gyro_seq_train], axis=1)
+            self.labels = y_seq_train.astype(np.int32)
+        elif self.split == 'val':
+            self.data = np.concatenate([X_accel_seq_val, X_gyro_seq_val], axis=1)
+            self.labels = y_seq_val.astype(np.int32)
+        else:  # 'test'
+            self.data = np.concatenate([X_accel_seq_test, X_gyro_seq_test], axis=1)
+            self.labels = y_seq_test.astype(np.int32)
+        
+        # Store all datasets for convenience
         self.train_data = np.concatenate([X_accel_seq_train, X_gyro_seq_train], axis=1)
-        self.train_label = y_seq_train.astype(np.int32)
+        self.train_labels = y_seq_train.astype(np.int32)
         
         self.val_data = np.concatenate([X_accel_seq_val, X_gyro_seq_val], axis=1)
-        self.val_label = y_seq_val.astype(np.int32)
+        self.val_labels = y_seq_val.astype(np.int32)
         
         self.test_data = np.concatenate([X_accel_seq_test, X_gyro_seq_test], axis=1)
-        self.test_label = y_seq_test.astype(np.int32)
+        self.test_labels = y_seq_test.astype(np.int32)
         
-        print(f"Train set: {self.train_data.shape}, {self.train_label.shape}")
-        print(f"Validation set: {self.val_data.shape}, {self.val_label.shape}")
-        print(f"Test set: {self.test_data.shape}, {self.test_label.shape}")
+        print(f"Train set: {self.train_data.shape}, {self.train_labels.shape}")
+        print(f"Validation set: {self.val_data.shape}, {self.val_labels.shape}")
+        print(f"Test set: {self.test_data.shape}, {self.test_labels.shape}")
+    
+    def split_windows(self, sequences, labels, overlap=True, clean=True):
+        """
+        Split sequences into windows.
+        
+        Args:
+            sequences: Data sequences
+            labels: Labels for each sequence step
+            overlap: Whether to use overlapping windows
+            clean: Whether to filter windows with mixed activities
+        
+        Returns:
+            X_windows: Windowed data
+            y_windows: Labels for each window
+        """
+        window_size = self.window_width
+        if overlap:
+            stride = self.stride
+        else:
+            stride = window_size
+        
+        n_samples, n_features = sequences.shape
+        n_windows = (n_samples - window_size) // stride + 1
+        
+        X_windows = np.zeros((n_windows, window_size, n_features))
+        y_windows = np.zeros(n_windows)
+        
+        window_idx = 0
+        for i in range(0, n_samples - window_size + 1, stride):
+            X_windows[window_idx] = sequences[i:i + window_size]
+            
+            # Use most frequent label in window if clean=True, otherwise use last label
+            if clean:
+                window_labels = labels[i:i + window_size]
+                unique_labels, counts = np.unique(window_labels, return_counts=True)
+                
+                # Skip windows with mixed activities
+                if len(unique_labels) > 1:
+                    most_common_label = unique_labels[np.argmax(counts)]
+                    most_common_count = np.max(counts)
+                    
+                    # If the most common label doesn't dominate (e.g., >80%), skip the window
+                    if most_common_count < 0.8 * window_size:
+                        continue
+                    
+                    y_windows[window_idx] = most_common_label
+                else:
+                    y_windows[window_idx] = unique_labels[0]
+            else:
+                # Use the label of the last sample in the window
+                y_windows[window_idx] = labels[i + window_size - 1]
+            
+            window_idx += 1
+        
+        # Trim any unused windows
+        if window_idx < n_windows:
+            X_windows = X_windows[:window_idx]
+            y_windows = y_windows[:window_idx]
+        
+        return X_windows, y_windows
 
 if __name__ == "__main__":
     # Test the dataset loading
     data_path = os.path.join("data", "PAMAP2_Dataset")
     dataset = PAMAP2Dataset(data_path, zero_shot=True)
-    dataset.dataset_verbose()
+    
+    # Print dataset structure and class distribution
+    print("\nDataset Structure:")
+    print(f"Train data shape: {dataset.train_data.shape}")
+    print(f"Validation data shape: {dataset.val_data.shape}")
+    print(f"Test seen data shape: {dataset.test_seen_data.shape}") 
+    print(f"Test unseen data shape: {dataset.test_unseen_data.shape}")
+    
+    print("\nClass distribution in train set:")
+    train_label_counts = Counter(dataset.train_labels)
+    for label, count in sorted(train_label_counts.items()):
+        print(f"{dataset.label_map[label]}: {count} samples")
+        
+    print("\nSeen classes:", [dataset.label_map[label] for label in dataset.seen_labels])
+    print("Unseen classes:", [dataset.label_map[label] for label in dataset.unseen_labels])

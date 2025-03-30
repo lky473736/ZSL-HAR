@@ -70,7 +70,7 @@ class WISDMDataset:
         Args:
             data_path (str): Path to the WISDM dataset file.
             zero_shot (bool): If True, split the data into seen and unseen activities.
-            split (str): One of 'train', 'val', or 'test'.
+            split (str): One of 'train', 'val', 'test_seen', or 'test_unseen'.
             window_size (int): Size of the sliding window for segmentation.
             stride (int): Stride for the sliding window.
         """
@@ -80,6 +80,15 @@ class WISDMDataset:
         self.window_size = window_size
         self.stride = stride
         self.label_map = self.LABEL_MAP
+        
+        # Find the correct data file if data_path is a directory
+        if os.path.isdir(data_path):
+            possible_files = ['WISDM_ar_v1.1_raw.txt', 'WISDM_ar_v1.1.txt']
+            for file in possible_files:
+                file_path = os.path.join(data_path, file)
+                if os.path.exists(file_path):
+                    self.data_path = file_path
+                    break
         
         # Load and preprocess the data
         self._load_data()
@@ -91,69 +100,91 @@ class WISDMDataset:
             print(f"Dataset not found at {self.data_path}. Please download the WISDM dataset.")
             return
             
-        # Load dataset using custom parser
-        df = self._load_wisdm_dataset(self.data_path)
-        
-        # Map activities to numerical labels
-        df['activity_id'] = df['activity'].map(self.ACTIVITY_MAP)
-        
-        # Drop rows with NaN values
-        df = df.dropna()
-        
-        # Split data based on seen/unseen activities
-        if self.zero_shot:
-            if self.split == 'train' or self.split == 'val':
-                df = df[df["activity_id"].isin(self.SEEN_LABELS)]
-            else:  # 'test' split
-                df = df[df["activity_id"].isin(self.UNSEEN_LABELS)]
-        
-        # Extract features and labels
-        X = df[['x_accel', 'y_accel', 'z_accel']].values
-        y = df['activity_id'].values
-        
-        # Standardize the data
-        scaler = StandardScaler()
-        X = scaler.fit_transform(X)
-        
-        # Segment the data using sliding windows
-        X_seq, y_seq = self._split_sequences(X, y, self.window_size, self.stride)
-        
-        # Split the data into train, validation, and test sets
-        if self.zero_shot:
-            if self.split == 'train' or self.split == 'val':
-                # Further split the seen activities data into train and validation
-                X_train, X_val, y_train, y_val = train_test_split(
+        try:
+            # Load dataset using custom parser
+            print(f"Loading WISDM dataset from: {self.data_path}")
+            df = self._load_wisdm_dataset(self.data_path)
+            
+            # Map activities to numerical labels
+            df['activity_id'] = df['activity'].map(self.ACTIVITY_MAP)
+            
+            # Drop rows with NaN values
+            df = df.dropna()
+            
+            # Split data based on seen/unseen activities
+            if self.zero_shot:
+                if self.split in ['train', 'val']:
+                    # For training and validation, use only seen labels
+                    df = df[df["activity_id"].isin(self.SEEN_LABELS)]
+                elif self.split == 'test_seen':
+                    # For testing seen activities
+                    df = df[df["activity_id"].isin(self.SEEN_LABELS)]
+                elif self.split == 'test_unseen':
+                    # For testing unseen activities
+                    df = df[df["activity_id"].isin(self.UNSEEN_LABELS)]
+            
+            # Extract features and labels
+            X = df[['x_accel', 'y_accel', 'z_accel']].values
+            y = df['activity_id'].values
+            
+            # Standardize the data
+            scaler = StandardScaler()
+            X = scaler.fit_transform(X)
+            
+            # Segment the data using sliding windows
+            X_seq, y_seq = self._split_sequences(X, y, self.window_size, self.stride)
+            
+            # Split the data into train, validation, and test sets
+            if self.zero_shot:
+                if self.split in ['train', 'val']:
+                    # Further split the seen activities data into train and validation
+                    X_train, X_val, y_train, y_val = train_test_split(
+                        X_seq, y_seq, test_size=0.2, random_state=42, stratify=y_seq
+                    )
+                    
+                    if self.split == 'train':
+                        self.accel_data = X_train
+                        self.gyro_data = X_train  # Use same data for gyro since WISDM only has accel
+                        self.labels = y_train
+                    else:  # 'val' split
+                        self.accel_data = X_val
+                        self.gyro_data = X_val  # Use same data for gyro
+                        self.labels = y_val
+                else:  # 'test_seen' or 'test_unseen' split
+                    self.accel_data = X_seq
+                    self.gyro_data = X_seq  # Use same data for gyro
+                    self.labels = y_seq
+            else:
+                # For non-zero-shot setting, split all data
+                X_train, X_test, y_train, y_test = train_test_split(
                     X_seq, y_seq, test_size=0.2, random_state=42, stratify=y_seq
                 )
                 
+                X_train, X_val, y_train, y_val = train_test_split(
+                    X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
+                )
+                
                 if self.split == 'train':
-                    self.X_data = X_train
-                    self.y_data = y_train
-                else:  # 'val' split
-                    self.X_data = X_val
-                    self.y_data = y_val
-            else:  # 'test' split (unseen activities)
-                self.X_data = X_seq
-                self.y_data = y_seq
-        else:
-            # For non-zero-shot setting, split all data
-            X_train, X_test, y_train, y_test = train_test_split(
-                X_seq, y_seq, test_size=0.2, random_state=42, stratify=y_seq
-            )
+                    self.accel_data = X_train
+                    self.gyro_data = X_train  # Use same data for gyro
+                    self.labels = y_train
+                elif self.split == 'val':
+                    self.accel_data = X_val
+                    self.gyro_data = X_val  # Use same data for gyro
+                    self.labels = y_val
+                else:  # 'test' split
+                    self.accel_data = X_test
+                    self.gyro_data = X_test  # Use same data for gyro
+                    self.labels = y_test
             
-            X_train, X_val, y_train, y_val = train_test_split(
-                X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
-            )
+            print(f"Split: {self.split}, Data shape: {self.accel_data.shape}, Labels shape: {self.labels.shape}")
             
-            if self.split == 'train':
-                self.X_data = X_train
-                self.y_data = y_train
-            elif self.split == 'val':
-                self.X_data = X_val
-                self.y_data = y_val
-            else:  # 'test' split
-                self.X_data = X_test
-                self.y_data = y_test
+        except Exception as e:
+            print(f"Error loading WISDM dataset: {e}")
+            # Initialize empty arrays to avoid further errors
+            self.accel_data = np.zeros((0, self.window_size, 3))
+            self.gyro_data = np.zeros((0, self.window_size, 3))
+            self.labels = np.zeros(0, dtype=int)
     
     def _load_wisdm_dataset(self, file_path):
         """
@@ -225,21 +256,15 @@ class WISDMDataset:
         """
         # For WISDM, we use the same data for both accel and gyro in the dual-branch model
         features = {
-            'accel': self.X_data,
-            'gyro': self.X_data  # Use the same data for gyro (since WISDM only has accelerometer)
+            'accel': self.accel_data,
+            'gyro': self.gyro_data  # Use the same data for gyro (since WISDM only has accelerometer)
         }
         
-        # Convert labels to one-hot encoding
-        max_label = max(self.SEEN_LABELS + self.UNSEEN_LABELS)
-        num_classes = max_label + 1
-        labels_onehot = tf.keras.utils.to_categorical(self.y_data, num_classes=num_classes)
-        
-        # Create a TensorFlow dataset
-        dataset = tf.data.Dataset.from_tensor_slices((features, labels_onehot))
+        dataset = tf.data.Dataset.from_tensor_slices((features, self.labels))
         
         # Shuffle and batch the dataset
         if shuffle:
-            dataset = dataset.shuffle(buffer_size=len(self.y_data))
+            dataset = dataset.shuffle(buffer_size=len(self.labels))
         
         dataset = dataset.batch(batch_size)
         return dataset
@@ -277,23 +302,27 @@ if __name__ == "__main__":
     # Test the dataset
     train_set = WISDMDataset(args.data_path, zero_shot=True, split='train')
     val_set = WISDMDataset(args.data_path, zero_shot=True, split='val')
-    test_set = WISDMDataset(args.data_path, zero_shot=True, split='test')
+    test_seen_set = WISDMDataset(args.data_path, zero_shot=True, split='test_seen')
+    test_unseen_set = WISDMDataset(args.data_path, zero_shot=True, split='test_unseen')
     
     # Create TensorFlow datasets
     train_dataset = train_set.get_tf_dataset(batch_size=32, shuffle=True)
     val_dataset = val_set.get_tf_dataset(batch_size=32, shuffle=False)
-    test_dataset = test_set.get_tf_dataset(batch_size=32, shuffle=False)
+    test_seen_dataset = test_seen_set.get_tf_dataset(batch_size=32, shuffle=False)
+    test_unseen_dataset = test_unseen_set.get_tf_dataset(batch_size=32, shuffle=False)
     
     # Print some information
     print("\nWISDM Dataset Information:")
-    print(f"Train set: {len(train_set.y_data)} samples")
-    print(f"Validation set: {len(val_set.y_data)} samples")
-    print(f"Test set: {len(test_set.y_data)} samples")
+    print(f"Train set: {len(train_set.labels)} samples")
+    print(f"Validation set: {len(val_set.labels)} samples")
+    print(f"Test seen set: {len(test_seen_set.labels)} samples")
+    print(f"Test unseen set: {len(test_unseen_set.labels)} samples")
     
     # Print activity label distribution
-    train_labels = train_set.y_data
-    val_labels = val_set.y_data
-    test_labels = test_set.y_data
+    train_labels = train_set.labels
+    val_labels = val_set.labels
+    test_seen_labels = test_seen_set.labels
+    test_unseen_labels = test_unseen_set.labels
     
     print("\nTrain set activity distribution:")
     for label in np.unique(train_labels):
@@ -307,30 +336,42 @@ if __name__ == "__main__":
         percent = count / len(val_labels) * 100
         print(f"  {val_set.label_map[label]}: {count} samples ({percent:.1f}%)")
     
-    print("\nTest set activity distribution:")
-    for label in np.unique(test_labels):
-        count = np.sum(test_labels == label)
-        percent = count / len(test_labels) * 100
-        print(f"  {test_set.label_map[label]}: {count} samples ({percent:.1f}%)")
+    print("\nTest seen set activity distribution:")
+    for label in np.unique(test_seen_labels):
+        count = np.sum(test_seen_labels == label)
+        percent = count / len(test_seen_labels) * 100
+        print(f"  {test_seen_set.label_map[label]}: {count} samples ({percent:.1f}%)")
+    
+    print("\nTest unseen set activity distribution:")
+    for label in np.unique(test_unseen_labels):
+        count = np.sum(test_unseen_labels == label)
+        percent = count / len(test_unseen_labels) * 100
+        print(f"  {test_unseen_set.label_map[label]}: {count} samples ({percent:.1f}%)")
     
     # Plot activity distribution
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(15, 10))
     
-    plt.subplot(1, 3, 1)
+    plt.subplot(2, 2, 1)
     sns.countplot(x=train_labels)
     plt.title("Train Activity Distribution")
     plt.xlabel("Activity ID")
     plt.xticks(range(len(train_set.SEEN_LABELS)), [train_set.label_map[i] for i in train_set.SEEN_LABELS], rotation=45)
     
-    plt.subplot(1, 3, 2)
+    plt.subplot(2, 2, 2)
     sns.countplot(x=val_labels)
     plt.title("Validation Activity Distribution")
     plt.xlabel("Activity ID")
     plt.xticks(range(len(train_set.SEEN_LABELS)), [train_set.label_map[i] for i in train_set.SEEN_LABELS], rotation=45)
     
-    plt.subplot(1, 3, 3)
-    sns.countplot(x=test_labels)
-    plt.title("Test Activity Distribution")
+    plt.subplot(2, 2, 3)
+    sns.countplot(x=test_seen_labels)
+    plt.title("Test Seen Activity Distribution")
+    plt.xlabel("Activity ID")
+    plt.xticks(range(len(train_set.SEEN_LABELS)), [train_set.label_map[i] for i in train_set.SEEN_LABELS], rotation=45)
+    
+    plt.subplot(2, 2, 4)
+    sns.countplot(x=test_unseen_labels)
+    plt.title("Test Unseen Activity Distribution")
     plt.xlabel("Activity ID")
     plt.xticks(range(len(train_set.UNSEEN_LABELS)), [train_set.label_map[i] for i in train_set.UNSEEN_LABELS], rotation=45)
     

@@ -17,6 +17,7 @@ import numpy as np
 import importlib
 import matplotlib.pyplot as plt
 import seaborn as sns
+import umap  # Added for UMAP visualization instead of t-SNE
 
 # Import configuration
 from config import (
@@ -289,7 +290,6 @@ def train_model(model, optimizer, train_dataset, val_dataset, num_classes, log, 
         # Iterate over training batches
         for step, (x, y) in enumerate(train_dataset):
             # Convert labels to one-hot
-            # 중요: y를 int32로 변환
             y = tf.cast(y, tf.int32)
             y_one_hot = tf.one_hot(y, depth=num_classes)
             
@@ -334,7 +334,6 @@ def train_model(model, optimizer, train_dataset, val_dataset, num_classes, log, 
         
         for x, y in val_dataset:
             # Convert labels to one-hot
-            # 중요: y를 int32로 변환
             y = tf.cast(y, tf.int32)
             y_one_hot = tf.one_hot(y, depth=num_classes)
             
@@ -425,6 +424,36 @@ def train_model(model, optimizer, train_dataset, val_dataset, num_classes, log, 
     
     return best_epoch, best_val_f1, history
 
+def plot_training_history(history, metrics, save_path=None):
+    """
+    Plot training history for specified metrics.
+    
+    Args:
+        history (dict): Training history dictionary
+        metrics (list): List of metrics to plot
+        save_path (str): Path to save the figure
+    """
+    plt.figure(figsize=(15, 10))
+    plt.suptitle('Training History', fontsize=16)
+    
+    for i, metric in enumerate(metrics):
+        plt.subplot(len(metrics), 1, i+1)
+        plt.plot(history[metric], label=f'Training {metric}')
+        plt.plot(history[f'val_{metric}'], label=f'Validation {metric}')
+        plt.xlabel('Epoch')
+        plt.ylabel(metric.capitalize())
+        plt.legend()
+        plt.grid(True)
+    
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.95)
+    
+    if save_path:
+        plt.savefig(save_path)
+        plt.close()
+    else:
+        plt.show()
+
 def evaluate_model(model, dataset, embedding_model=None):
     """
     Evaluate the model on a dataset.
@@ -463,6 +492,30 @@ def evaluate_model(model, dataset, embedding_model=None):
         return true_labels, pred_labels, embeddings
     
     return true_labels, pred_labels, None
+
+def plot_confusion_matrix(cm, class_names, title="Confusion Matrix", save_path=None):
+    """
+    Plot a confusion matrix.
+    
+    Args:
+        cm (numpy.ndarray): Confusion matrix
+        class_names (list): List of class names
+        title (str): Plot title
+        save_path (str): Path to save the figure
+    """
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                xticklabels=class_names, yticklabels=class_names)
+    plt.title(title, fontsize=15)
+    plt.ylabel('True Label', fontsize=13)
+    plt.xlabel('Predicted Label', fontsize=13)
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path)
+        plt.close()
+    else:
+        plt.show()
 
 def calculate_prototypes(embeddings, labels, target_labels):
     """
@@ -508,42 +561,95 @@ def calculate_similarity_matrix(unseen_prototypes, seen_prototypes, unseen_label
     
     return similarity_matrix
 
-def create_adjacency_matrix(unseen_labels, seen_labels, manual_mappings):
+def plot_similarity_matrix(similarity_matrix, row_labels, col_labels, row_label_map=None, col_label_map=None, 
+                           title="Similarity Matrix", save_path=None):
     """
-    Create adjacency matrix for manual mapping.
+    Plot similarity matrix.
     
     Args:
-        unseen_labels: List of unseen class labels
-        seen_labels: List of seen class labels
-        manual_mappings: Dictionary mapping unseen labels to seen labels
-        
-    Returns:
-        numpy.ndarray: Adjacency matrix
-    """
-    adjacency_matrix = np.zeros((len(unseen_labels), len(seen_labels)))
-    for i, unseen_label in enumerate(unseen_labels):
-        for seen_label in manual_mappings[unseen_label]:
-            j = seen_labels.index(seen_label)
-            adjacency_matrix[i, j] = 1
-    
-    return adjacency_matrix
-
-def plot_confusion_matrix(cm, class_names, title="Confusion Matrix", save_path=None):
-    """
-    Plot a confusion matrix.
-    
-    Args:
-        cm (numpy.ndarray): Confusion matrix
-        class_names (list): List of class names
+        similarity_matrix (numpy.ndarray): Similarity matrix
+        row_labels (list): Row labels
+        col_labels (list): Column labels
+        row_label_map (dict): Mapping from numerical labels to text labels for rows
+        col_label_map (dict): Mapping from numerical labels to text labels for columns
         title (str): Plot title
         save_path (str): Path to save the figure
     """
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                xticklabels=class_names, yticklabels=class_names)
+    # Apply label mapping if provided
+    if row_label_map is not None:
+        row_labels = [row_label_map[label] for label in row_labels]
+    if col_label_map is not None:
+        col_labels = [col_label_map[label] for label in col_labels]
+    
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(similarity_matrix, annot=True, fmt='.2f', cmap='YlGnBu',
+                xticklabels=col_labels, yticklabels=row_labels)
     plt.title(title, fontsize=15)
-    plt.ylabel('True Label', fontsize=13)
-    plt.xlabel('Predicted Label', fontsize=13)
+    plt.ylabel('Unseen Activities', fontsize=13)
+    plt.xlabel('Seen Activities', fontsize=13)
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path)
+        plt.close()
+    else:
+        plt.show()
+
+def plot_embeddings_umap(embeddings, labels, label_map=None, title="UMAP Visualization", 
+                         n_neighbors=15, min_dist=0.1, save_path=None):
+    """
+    Plot UMAP visualization of embeddings.
+    
+    Args:
+        embeddings (numpy.ndarray): Feature embeddings
+        labels (numpy.ndarray): Class labels
+        label_map (dict): Mapping from numerical labels to text labels
+        title (str): Plot title
+        n_neighbors (int): UMAP parameter
+        min_dist (float): UMAP parameter
+        save_path (str): Path to save the figure
+    """
+    # UMAP dimensionality reduction
+    reducer = umap.UMAP(
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        n_components=2,
+        metric='euclidean',
+        random_state=SEED
+    )
+    
+    # Fit and transform the embeddings
+    try:
+        embedding = reducer.fit_transform(embeddings)
+    except Exception as e:
+        print(f"Error in UMAP reduction: {e}")
+        return
+    
+    # Create a figure
+    plt.figure(figsize=(12, 10))
+    
+    # Get unique labels
+    unique_labels = np.unique(labels)
+    
+    # Generate colors for each class
+    colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_labels)))
+    
+    # Plot each class
+    for i, label in enumerate(unique_labels):
+        mask = labels == label
+        if np.sum(mask) > 0:
+            label_text = label_map[label] if label_map is not None else f"Class {label}"
+            plt.scatter(
+                embedding[mask, 0],
+                embedding[mask, 1],
+                c=[colors[i]],
+                label=label_text,
+                alpha=0.7
+            )
+    
+    plt.title(title, fontsize=15)
+    plt.legend(fontsize=10, markerscale=2)
+    plt.grid(True, linestyle='--', alpha=0.5)
     plt.tight_layout()
     
     if save_path:
@@ -587,8 +693,7 @@ def run_zero_shot_experiment(dataset_name, dataset_path):
     
     # Import utility modules
     from utils.logger import setup_logger
-    from utils.metrics import calculate_metrics, calculate_per_class_metrics, evaluate_zero_shot_mapping, calculate_harmonic_mean
-    from utils.visualization import plot_training_history, plot_confusion_matrix, plot_embeddings_tsne, plot_similarity_matrix, plot_adjacency_matrix, plot_metrics_comparison
+    from utils.metrics import calculate_metrics, calculate_per_class_metrics
     from models.model import create_zeroshot_model, create_embedding_model
     
     # Create logger
@@ -611,7 +716,7 @@ def run_zero_shot_experiment(dataset_name, dataset_path):
     }
     log.log_config(config_dict)
     
-    # Load dataset - 중요: 수정된 load_dataset 함수 사용
+    # Load dataset
     log.info(f"Loading {dataset_name} dataset from {dataset_path}")
     train_set, val_set, test_seen_set, test_unseen_set, train_dataset, val_dataset, test_seen_dataset, test_unseen_dataset = load_dataset(
         dataset_name, dataset_path, zero_shot=True
@@ -627,22 +732,10 @@ def run_zero_shot_experiment(dataset_name, dataset_path):
     print(f"  - Accel shape: {train_set.accel_data.shape}, Gyro shape: {train_set.gyro_data.shape}")
     print(f"  - Classes: {[train_set.label_map[i] for i in seen_labels]}")
     print(f"Validation dataset: {num_val_batches} batches, {len(val_set.labels)} samples")
-    print(f"  - Accel shape: {val_set.accel_data.shape}, Gyro shape: {val_set.gyro_data.shape}")
-    print(f"  - Classes: {[train_set.label_map[i] for i in seen_labels]}")
     print(f"Test (Seen) dataset: {num_test_seen_batches} batches, {len(test_seen_set.labels)} samples")
-    print(f"  - Accel shape: {test_seen_set.accel_data.shape}, Gyro shape: {test_seen_set.gyro_data.shape}")
     print(f"  - Classes: {[train_set.label_map[i] for i in seen_labels]}")
     print(f"Test (Unseen) dataset: {num_test_unseen_batches} batches, {len(test_unseen_set.labels)} samples")
-    print(f"  - Accel shape: {test_unseen_set.accel_data.shape}, Gyro shape: {test_unseen_set.gyro_data.shape}")
     print(f"  - Classes: {[train_set.label_map[i] for i in unseen_labels]}")
-    # log.info(f"Train dataset: {num_train_batches} batches, {len(train_set.labels)} samples")
-    # log.info(f"  - Accel shape: {train_set.accel_data.shape}, Gyro shape: {train_set.gyro_data.shape}")
-    # log.info(f"Validation dataset: {num_val_batches} batches, {len(val_set.labels)} samples")
-    # log.info(f"  - Accel shape: {val_set.accel_data.shape}, Gyro shape: {val_set.gyro_data.shape}")
-    # log.info(f"Test (Seen) dataset: {num_test_seen_batches} batches, {len(test_seen_set.labels)} samples")
-    # log.info(f"  - Accel shape: {test_seen_set.accel_data.shape}, Gyro shape: {test_seen_set.gyro_data.shape}")
-    # log.info(f"Test (Unseen) dataset: {num_test_unseen_batches} batches, {len(test_unseen_set.labels)} samples")
-    # log.info(f"  - Accel shape: {test_unseen_set.accel_data.shape}, Gyro shape: {test_unseen_set.gyro_data.shape}")
     
     # Create model
     log.info("Creating model...")
@@ -656,7 +749,7 @@ def run_zero_shot_experiment(dataset_name, dataset_path):
         model, optimizer, train_dataset, val_dataset, num_classes, log, output_dir
     )
     
-    # Plot training history
+    # Plot training history (Visualization #1)
     history_plot_path = os.path.join(output_dir, "training_history.png")
     plot_training_history(
         history, 
@@ -669,7 +762,6 @@ def run_zero_shot_experiment(dataset_name, dataset_path):
     model.load_weights(os.path.join(output_dir, "best_model.weights.h5"))
     
     # Create embedding model
-    # Create embedding model
     embedding_model = create_embedding_model(model)
     
     # ===== Evaluate on Seen Classes =====
@@ -680,7 +772,7 @@ def run_zero_shot_experiment(dataset_name, dataset_path):
     seen_metrics = calculate_metrics(test_seen_true, test_seen_pred)
     log.log_metrics(seen_metrics, prefix="Seen Classes")
     
-    # Plot confusion matrix for seen classes
+    # Plot confusion matrix for seen classes (Visualization #2)
     seen_cm_path = os.path.join(output_dir, "seen_confusion_matrix.png")
     seen_cm = tf.math.confusion_matrix(test_seen_true, test_seen_pred).numpy()
     seen_class_names = [train_set.label_map[i] for i in seen_labels]
@@ -692,36 +784,13 @@ def run_zero_shot_experiment(dataset_name, dataset_path):
     )
     log.info(f"Confusion matrix for seen classes saved to {seen_cm_path}")
     
-    # Calculate per-class metrics for seen classes
-    seen_per_class_metrics = calculate_per_class_metrics(test_seen_true, test_seen_pred, train_set.label_map)
-    log.log_class_performance(seen_per_class_metrics, title="seen_class_metrics")
-    
-    # Plot t-SNE visualization for seen classes
-    seen_tsne_path = os.path.join(output_dir, "seen_embeddings_tsne.png")
-    plot_embeddings_tsne(
-        test_seen_embeddings,
-        test_seen_true,
-        label_map=train_set.label_map,
-        title="t-SNE Visualization of Seen Classes",
-        save_path=seen_tsne_path
-    )
-    log.info(f"t-SNE visualization for seen classes saved to {seen_tsne_path}")
-    
     # ===== Evaluate on Unseen Classes =====
     log.info("Evaluating model on unseen classes...")
     test_unseen_true, test_unseen_pred, test_unseen_embeddings = evaluate_model(model, test_unseen_dataset, embedding_model)
     
-    # Plot confusion matrix for unseen classes directly
-    unseen_direct_cm_path = os.path.join(output_dir, "unseen_direct_confusion_matrix.png")
-    unseen_cm = tf.math.confusion_matrix(test_unseen_true, test_unseen_pred).numpy()
-    unseen_class_names = [train_set.label_map[i] for i in unseen_labels]
-    plot_confusion_matrix(
-        unseen_cm, 
-        seen_class_names,  # Predicted as seen classes
-        title="Confusion Matrix for Unseen Classes (Direct Prediction)",
-        save_path=unseen_direct_cm_path
-    )
-    log.info(f"Direct confusion matrix for unseen classes saved to {unseen_direct_cm_path}")
+    # Calculate metrics for unseen classes - 이미 config.py에 있는 manual_mappings 사용
+    unseen_metrics = calculate_metrics(test_unseen_true, test_unseen_pred)
+    log.log_metrics(unseen_metrics, prefix="Unseen Classes")
     
     # Calculate prototypes for seen and unseen classes
     seen_prototypes = calculate_prototypes(test_seen_embeddings, test_seen_true, seen_labels)
@@ -732,7 +801,7 @@ def run_zero_shot_experiment(dataset_name, dataset_path):
         unseen_prototypes, seen_prototypes, unseen_labels, seen_labels
     )
     
-    # Plot similarity matrix
+    # Plot similarity matrix (Visualization #3)
     similarity_matrix_path = os.path.join(output_dir, "similarity_matrix.png")
     plot_similarity_matrix(
         similarity_matrix,
@@ -745,93 +814,135 @@ def run_zero_shot_experiment(dataset_name, dataset_path):
     )
     log.info(f"Similarity matrix saved to {similarity_matrix_path}")
     
-    # Create adjacency matrix for manual mapping
-    adjacency_matrix = create_adjacency_matrix(unseen_labels, seen_labels, manual_mappings)
-    
-    # Plot adjacency matrix
-    adjacency_matrix_path = os.path.join(output_dir, "adjacency_matrix.png")
-    plot_adjacency_matrix(
-        adjacency_matrix,
-        unseen_labels,
-        seen_labels,
-        mapping_dict=manual_mappings,
-        row_label_map=train_set.label_map,
-        col_label_map=train_set.label_map,
-        title="Manual Mapping Adjacency Matrix: Unseen → Seen Activities",
-        save_path=adjacency_matrix_path
-    )
-    log.info(f"Adjacency matrix saved to {adjacency_matrix_path}")
-    
-    # Evaluate with manual mapping
-    unseen_metrics = evaluate_zero_shot_mapping(test_unseen_true, test_unseen_pred, manual_mappings)
-    log.log_metrics(unseen_metrics, prefix="Unseen Classes (Manual Mapping)")
-    
-    # Create manually mapped confusion matrix
-    mapped_cm_path = os.path.join(output_dir, "unseen_mapped_confusion_matrix.png")
+    # Create test_unseen confusion matrix (Visualization #4)
+    unseen_cm_path = os.path.join(output_dir, "unseen_confusion_matrix.png")
     
     # Create a mapped confusion matrix based on manual mappings
-    mapped_cm = np.zeros((len(unseen_labels), len(seen_labels)), dtype=np.int32)
+    unseen_cm = np.zeros((len(unseen_labels), len(seen_labels)), dtype=np.int32)
     for i, unseen_label in enumerate(unseen_labels):
         mask = test_unseen_true == unseen_label
         predictions = test_unseen_pred[mask]
         for j, seen_label in enumerate(seen_labels):
             count = np.sum(predictions == seen_label)
-            mapped_cm[i, j] = count
+            unseen_cm[i, j] = count
     
-    # Highlight correct mappings in the confusion matrix visualization
-    plot_confusion_matrix(
-        mapped_cm,
-        seen_class_names,
-        title="Confusion Matrix for Unseen Classes (with Manual Mapping)",
-        save_path=mapped_cm_path
-    )
-    log.info(f"Mapped confusion matrix saved to {mapped_cm_path}")
+    unseen_class_names = [train_set.label_map[i] for i in unseen_labels]
     
-    # Calculate harmonic mean metrics
-    harmonic_metrics = calculate_harmonic_mean(seen_metrics, unseen_metrics)
-    log.log_metrics(harmonic_metrics, prefix="Harmonic Mean")
+    # Plot confusion matrix for unseen classes
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(unseen_cm, annot=True, fmt='d', cmap='Blues',
+                xticklabels=seen_class_names, yticklabels=unseen_class_names)
+    plt.title("Confusion Matrix for Unseen Classes", fontsize=15)
+    plt.ylabel('True Unseen Label', fontsize=13)
+    plt.xlabel('Predicted Seen Label', fontsize=13)
+    plt.tight_layout()
+    plt.savefig(unseen_cm_path)
+    plt.close()
     
-    # Plot metrics comparison
-    metrics_comparison_path = os.path.join(output_dir, "metrics_comparison.png")
-    plot_metrics_comparison(
-        seen_metrics,
-        unseen_metrics,
-        harmonic_metrics,
-        save_path=metrics_comparison_path
-    )
-    log.info(f"Metrics comparison plot saved to {metrics_comparison_path}")
+    log.info(f"Confusion matrix for unseen classes saved to {unseen_cm_path}")
     
-    # Plot t-SNE visualization for unseen classes
-    unseen_tsne_path = os.path.join(output_dir, "unseen_embeddings_tsne.png")
-    plot_embeddings_tsne(
-        test_unseen_embeddings,
-        test_unseen_true,
-        label_map=train_set.label_map,
-        title="t-SNE Visualization of Unseen Classes",
-        save_path=unseen_tsne_path
-    )
-    log.info(f"t-SNE visualization for unseen classes saved to {unseen_tsne_path}")
+    # Performance 지표를 CSV 파일로 저장
+    import csv
+    performance_path = os.path.join(output_dir, "performances.csv")
+    with open(performance_path, 'w', newline='') as csvfile:
+        fieldnames = ['Dataset', 'Category', 'Accuracy', 'Precision', 'Recall', 'F1']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        writer.writeheader()
+        writer.writerow({
+            'Dataset': dataset_name,
+            'Category': 'Seen',
+            'Accuracy': f"{seen_metrics['accuracy']:.4f}",
+            'Precision': f"{seen_metrics['precision']:.4f}",
+            'Recall': f"{seen_metrics['recall']:.4f}",
+            'F1': f"{seen_metrics['f1']:.4f}"
+        })
+        writer.writerow({
+            'Dataset': dataset_name,
+            'Category': 'Unseen',
+            'Accuracy': f"{unseen_metrics['accuracy']:.4f}",
+            'Precision': f"{unseen_metrics['precision']:.4f}",
+            'Recall': f"{unseen_metrics['recall']:.4f}",
+            'F1': f"{unseen_metrics['f1']:.4f}"
+        })
     
-    # Combined t-SNE visualization of both seen and unseen classes
+    log.info(f"Performance metrics saved to {performance_path}")
+    
+    # UMAP visualization of both seen and unseen classes (Visualization #5)
     if len(test_seen_embeddings) > 0 and len(test_unseen_embeddings) > 0:
+        # Prepare data for UMAP visualization
         combined_embeddings = np.vstack([test_seen_embeddings, test_unseen_embeddings])
         combined_labels = np.concatenate([test_seen_true, test_unseen_true])
         
-        combined_tsne_path = os.path.join(output_dir, "combined_embeddings_tsne.png")
-        plot_embeddings_tsne(
-            combined_embeddings,
-            combined_labels,
-            label_map=train_set.label_map,
-            title="t-SNE Visualization of All Classes",
-            save_path=combined_tsne_path
+        # Create a new array to differentiate seen and unseen classes in the visualization
+        is_seen = np.concatenate([
+            np.ones(len(test_seen_true), dtype=bool), 
+            np.zeros(len(test_unseen_true), dtype=bool)
+        ])
+        
+        # Plot UMAP visualization
+        umap_path = os.path.join(output_dir, "combined_embeddings_umap.png")
+        
+        # Perform UMAP dimensionality reduction
+        reducer = umap.UMAP(
+            n_neighbors=15,
+            min_dist=0.1,
+            n_components=2,
+            metric='euclidean',
+            random_state=SEED
         )
-        log.info(f"Combined t-SNE visualization saved to {combined_tsne_path}")
+        
+        try:
+            embedding = reducer.fit_transform(combined_embeddings)
+            
+            plt.figure(figsize=(14, 12))
+            
+            # Plot seen classes with circles
+            for label in seen_labels:
+                mask = (combined_labels == label) & is_seen
+                if np.sum(mask) > 0:
+                    plt.scatter(
+                        embedding[mask, 0],
+                        embedding[mask, 1],
+                        label=f"Seen: {train_set.label_map[label]}",
+                        marker='o',
+                        s=80,
+                        alpha=0.7
+                    )
+            
+            # Plot unseen classes with triangles
+            for label in unseen_labels:
+                mask = (combined_labels == label) & (~is_seen)
+                if np.sum(mask) > 0:
+                    plt.scatter(
+                        embedding[mask, 0],
+                        embedding[mask, 1],
+                        label=f"Unseen: {train_set.label_map[label]}",
+                        marker='^',
+                        s=80,
+                        alpha=0.7
+                    )
+            
+            plt.title("UMAP Visualization of Seen and Unseen Classes", fontsize=15)
+            plt.legend(fontsize=10, markerscale=1.5, loc='best')
+            plt.grid(True, linestyle='--', alpha=0.5)
+            plt.tight_layout()
+            plt.savefig(umap_path)
+            plt.close()
+            
+            log.info(f"UMAP visualization saved to {umap_path}")
+        except Exception as e:
+            log.error(f"Error in UMAP reduction: {e}")
     
     # Log final results
     log.info("\n====== Final Results ======")
     log.info(f"Seen Classes - Accuracy: {seen_metrics['accuracy']:.4f}, F1: {seen_metrics['f1']:.4f}")
     log.info(f"Unseen Classes - Accuracy: {unseen_metrics['accuracy']:.4f}, F1: {unseen_metrics['f1']:.4f}")
-    log.info(f"Harmonic Mean - Accuracy: {harmonic_metrics['accuracy']:.4f}, F1: {harmonic_metrics['f1']:.4f}")
+    
+    # 콘솔에 최종 F1 점수 출력
+    print("\n====== Final Results ======")
+    print(f"Seen Classes F1 Score: {seen_metrics['f1']:.4f}")
+    print(f"Unseen Classes F1 Score: {unseen_metrics['f1']:.4f}")
     
     print(f"\nExperiment completed! Results are saved in: {output_dir}")
 
