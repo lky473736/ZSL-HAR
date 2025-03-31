@@ -132,16 +132,21 @@ def evaluate_zero_shot_mapping(y_true, y_pred, mapping_dict):
     correct_count = 0
     
     # Create binary arrays for metrics calculation
-    y_true_binary = np.ones(total_samples)  # All should be mapped correctly
-    y_pred_binary = np.zeros(total_samples)  # Start with all incorrect
+    y_true_binary = np.zeros(total_samples)  # Initialize all as incorrect
+    y_pred_binary = np.zeros(total_samples)  # Initialize all as incorrect
     
     for i, (true_label, pred_label) in enumerate(zip(y_true, y_pred)):
-        if pred_label in mapping_dict.get(true_label, []):
+        # Check if the prediction is in the valid mapping for this unseen class
+        if true_label in mapping_dict and pred_label in mapping_dict[true_label]:
             correct_count += 1
-            y_pred_binary[i] = 1  # Mark as correct if in mapping
+            y_true_binary[i] = 1  # This should be correctly mapped
+            y_pred_binary[i] = 1  # And it was correctly mapped
+        else:
+            y_true_binary[i] = 1  # This should be correctly mapped
+            y_pred_binary[i] = 0  # But it was incorrectly mapped
     
     # Calculate metrics
-    accuracy = correct_count / total_samples
+    accuracy = correct_count / total_samples if total_samples > 0 else 0
     precision = precision_score(y_true_binary, y_pred_binary, zero_division=0)
     recall = recall_score(y_true_binary, y_pred_binary, zero_division=0)
     f1 = f1_score(y_true_binary, y_pred_binary, zero_division=0)

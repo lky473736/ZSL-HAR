@@ -91,8 +91,8 @@ class mHealthDataset:
         self._load_data()
         
     def _load_data(self):
-        """Load the mHealth dataset."""
-        # Check if dataset exists, otherwise try to download it
+        """Load the mHealth dataset without SMOTE."""
+        # Check if dataset exists
         if not os.path.exists(self.data_path):
             print(f"Dataset not found at {self.data_path}. Please download the mHealth dataset.")
             return
@@ -164,24 +164,26 @@ class mHealthDataset:
         # Split data based on seen/unseen activities
         if self.zero_shot:
             # Split into seen/unseen activities like the notebook
-            if self.split == 'train' or self.split == 'val':
-                df = df[df["activity"].isin(self.SEEN_LABELS)]
-            else:  # 'test' split
-                df = df[df["activity"].isin(self.UNSEEN_LABELS)]
+            if self.split in ['train', 'val', 'test_seen']:
+                df_filtered = df[df["activity"].isin(self.SEEN_LABELS)]
+            else:  # 'test_unseen' split
+                df_filtered = df[df["activity"].isin(self.UNSEEN_LABELS)]
+        else:
+            # Use all activities for non-zero-shot
+            df_filtered = df
             
-        # Get column indices for left ankle accel and gyro data
-        accel_indices = [df.columns.get_loc(col) for col in accel_cols if col in df.columns]
-        gyro_indices = [df.columns.get_loc(col) for col in gyro_cols if col in df.columns]
-        
         # Separate features and labels
-        X = df.drop(["activity", "subject"], axis=1)
-        y = df["activity"].values
+        X = df_filtered.drop(["activity", "subject"], axis=1)
+        y = df_filtered["activity"].values
         
         # Standardize the data
         scaler = StandardScaler()
         X = scaler.fit_transform(X)
         
         # Get accelerometer and gyroscope data using specific columns
+        accel_indices = [df_filtered.columns.get_loc(col) for col in accel_cols if col in df_filtered.columns]
+        gyro_indices = [df_filtered.columns.get_loc(col) for col in gyro_cols if col in df_filtered.columns]
+        
         accel_data = X[:, accel_indices]
         gyro_data = X[:, gyro_indices]
         
@@ -191,10 +193,10 @@ class mHealthDataset:
         
         # Split the data based on setting and requested split
         if self.zero_shot:
-            if self.split == 'train' or self.split == 'val':
+            if self.split in ['train', 'val']:
                 # Split seen activities into train and validation
                 X_accel_train, X_accel_val, X_gyro_train, X_gyro_val, y_train, y_val = train_test_split(
-                    X_accel_seq, X_gyro_seq, y_seq, test_size=0.2, random_state=42
+                    X_accel_seq, X_gyro_seq, y_seq, test_size=0.2, random_state=42, stratify=y_seq
                 )
                 
                 if self.split == 'train':
@@ -205,18 +207,26 @@ class mHealthDataset:
                     self.accel_data = X_accel_val
                     self.gyro_data = X_gyro_val
                     self.labels = y_val
-            else:  # 'test' split (unseen activities)
+            elif self.split == 'test_seen':
+                # Create a separate test set from seen classes
+                X_accel_train, X_accel_test, X_gyro_train, X_gyro_test, y_train, y_test = train_test_split(
+                    X_accel_seq, X_gyro_seq, y_seq, test_size=0.2, random_state=42, stratify=y_seq
+                )
+                self.accel_data = X_accel_test
+                self.gyro_data = X_gyro_test
+                self.labels = y_test
+            else:  # 'test_unseen' split
                 self.accel_data = X_accel_seq
                 self.gyro_data = X_gyro_seq
                 self.labels = y_seq
         else:
             # For non-zero-shot setting, split all data
             X_accel_train, X_accel_test, X_gyro_train, X_gyro_test, y_train, y_test = train_test_split(
-                X_accel_seq, X_gyro_seq, y_seq, test_size=0.2, random_state=42
+                X_accel_seq, X_gyro_seq, y_seq, test_size=0.2, random_state=42, stratify=y_seq
             )
             
             X_accel_train, X_accel_val, X_gyro_train, X_gyro_val, y_train, y_val = train_test_split(
-                X_accel_train, X_gyro_train, y_train, test_size=0.2, random_state=42
+                X_accel_train, X_gyro_train, y_train, test_size=0.2, random_state=42, stratify=y_train
             )
             
             if self.split == 'train':
@@ -231,6 +241,9 @@ class mHealthDataset:
                 self.accel_data = X_accel_test
                 self.gyro_data = X_gyro_test
                 self.labels = y_test
+        
+        print(f"Split: {self.split}, Accel data shape: {self.accel_data.shape}, "
+              f"Gyro data shape: {self.gyro_data.shape}, Labels shape: {self.labels.shape}")
     
     def _split_sequences(self, sequences, labels, n_steps, stride):
         """
@@ -278,73 +291,3 @@ class mHealthDataset:
         
         dataset = dataset.batch(batch_size)
         return dataset
-
-
-# # If run as a script, download and test the dataset
-# if __name__ == "__main__":
-#     import argparse
-    
-#     parser = argparse.ArgumentParser(description="mHealth Dataset Handler")
-#     parser.add_argument("--data_path", type=str, default="../data/MHEALTHDATASET",
-#                         help="Path to the mHealth dataset")
-#     parser.add_argument("--download", action="store_true",
-#                         help="Download the dataset if not available")
-#     args = parser.parse_args()
-    
-#     if args.download:
-#         # Download the dataset if it doesn't exist
-#         if not os.path.exists(args.data_path):
-#             import requests
-#             import zipfile
-#             import io
-            
-#             print("Downloading mHealth dataset...")
-#             url = "https://archive.ics.uci.edu/ml/machine-learning-databases/00319/MHEALTHDATASET.zip"
-            
-#             # Create directory if it doesn't exist
-#             os.makedirs(os.path.dirname(args.data_path), exist_ok=True)
-            
-#             # Download and extract the dataset
-#             response = requests.get(url)
-#             z = zipfile.ZipFile(io.BytesIO(response.content))
-#             z.extractall(os.path.dirname(args.data_path))
-#             print("Download completed!")
-    
-#     # Test the dataset
-#     train_set = mHealthDataset(args.data_path, zero_shot=True, split='train')
-#     val_set = mHealthDataset(args.data_path, zero_shot=True, split='val')
-#     test_set = mHealthDataset(args.data_path, zero_shot=True, split='test')
-    
-#     # Create TensorFlow datasets
-#     train_dataset = train_set.get_tf_dataset(batch_size=32, shuffle=True)
-#     val_dataset = val_set.get_tf_dataset(batch_size=32, shuffle=False)
-#     test_dataset = test_set.get_tf_dataset(batch_size=32, shuffle=False)
-    
-#     # Print some information
-#     print("\nmHealth Dataset Information:")
-#     print(f"Train set: {len(train_set.labels)} samples")
-#     print(f"Validation set: {len(val_set.labels)} samples")
-#     print(f"Test set: {len(test_set.labels)} samples")
-    
-#     # Print activity label distribution
-#     train_labels = train_set.labels
-#     val_labels = val_set.labels
-#     test_labels = test_set.labels
-    
-#     print("\nTrain set activity distribution:")
-#     for label in np.unique(train_labels):
-#         count = np.sum(train_labels == label)
-#         percent = count / len(train_labels) * 100
-#         print(f"  {train_set.label_map[label]}: {count} samples ({percent:.1f}%)")
-    
-#     print("\nValidation set activity distribution:")
-#     for label in np.unique(val_labels):
-#         count = np.sum(val_labels == label)
-#         percent = count / len(val_labels) * 100
-#         print(f"  {val_set.label_map[label]}: {count} samples ({percent:.1f}%)")
-    
-#     print("\nTest set activity distribution:")
-#     for label in np.unique(test_labels):
-#         count = np.sum(test_labels == label)
-#         percent = count / len(test_labels) * 100
-#         print(f"  {test_set.label_map[label]}: {count} samples ({percent:.1f}%)")

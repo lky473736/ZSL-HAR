@@ -94,7 +94,7 @@ class WISDMDataset:
         self._load_data()
         
     def _load_data(self):
-        """Load the WISDM dataset."""
+        """Load the WISDM dataset (with balance adjustments but no SMOTE)."""
         # Check if dataset exists
         if not os.path.exists(self.data_path):
             print(f"Dataset not found at {self.data_path}. Please download the WISDM dataset.")
@@ -113,19 +113,22 @@ class WISDMDataset:
             
             # Split data based on seen/unseen activities
             if self.zero_shot:
+                # For training and validation, use only seen labels
                 if self.split in ['train', 'val']:
-                    # For training and validation, use only seen labels
-                    df = df[df["activity_id"].isin(self.SEEN_LABELS)]
+                    df_filtered = df[df["activity_id"].isin(self.SEEN_LABELS)]
                 elif self.split == 'test_seen':
                     # For testing seen activities
-                    df = df[df["activity_id"].isin(self.SEEN_LABELS)]
+                    df_filtered = df[df["activity_id"].isin(self.SEEN_LABELS)]
                 elif self.split == 'test_unseen':
                     # For testing unseen activities
-                    df = df[df["activity_id"].isin(self.UNSEEN_LABELS)]
+                    df_filtered = df[df["activity_id"].isin(self.UNSEEN_LABELS)]
+            else:
+                # For non-zero-shot, use all data
+                df_filtered = df
             
             # Extract features and labels
-            X = df[['x_accel', 'y_accel', 'z_accel']].values
-            y = df['activity_id'].values
+            X = df_filtered[['x_accel', 'y_accel', 'z_accel']].values
+            y = df_filtered['activity_id'].values
             
             # Standardize the data
             scaler = StandardScaler()
@@ -134,12 +137,13 @@ class WISDMDataset:
             # Segment the data using sliding windows
             X_seq, y_seq = self._split_sequences(X, y, self.window_size, self.stride)
             
-            # Split the data into train, validation, and test sets
+            # Split the data according to the requested split
             if self.zero_shot:
                 if self.split in ['train', 'val']:
-                    # Further split the seen activities data into train and validation
+                    # Split seen data into train and validation
                     X_train, X_val, y_train, y_val = train_test_split(
-                        X_seq, y_seq, test_size=0.2, random_state=42, stratify=y_seq
+                        X_seq, y_seq, test_size=0.2, random_state=42, 
+                        stratify=y_seq if len(np.unique(y_seq)) > 1 else None
                     )
                     
                     if self.split == 'train':
@@ -157,11 +161,13 @@ class WISDMDataset:
             else:
                 # For non-zero-shot setting, split all data
                 X_train, X_test, y_train, y_test = train_test_split(
-                    X_seq, y_seq, test_size=0.2, random_state=42, stratify=y_seq
+                    X_seq, y_seq, test_size=0.2, random_state=42, 
+                    stratify=y_seq if len(np.unique(y_seq)) > 1 else None
                 )
                 
                 X_train, X_val, y_train, y_val = train_test_split(
-                    X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
+                    X_train, y_train, test_size=0.2, random_state=42,
+                    stratify=y_train if len(np.unique(y_train)) > 1 else None
                 )
                 
                 if self.split == 'train':

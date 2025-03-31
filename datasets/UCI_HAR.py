@@ -119,7 +119,7 @@ class UCI_HARDataset:
         
         # Stack the signals as done in paste.txt
         X_train = np.stack([train_body_acc_x, train_body_acc_y, train_body_acc_z, 
-                           train_body_gyro_x, train_body_gyro_y, train_body_gyro_z], axis=2)
+                        train_body_gyro_x, train_body_gyro_y, train_body_gyro_z], axis=2)
         
         # Load training labels and adjust from 1-indexed to 0-indexed as in paste.txt
         y_train = np.loadtxt(os.path.join(self.data_path, 'train/y_train.txt'))
@@ -136,7 +136,7 @@ class UCI_HARDataset:
         
         # Stack the signals
         X_test = np.stack([test_body_acc_x, test_body_acc_y, test_body_acc_z, 
-                          test_body_gyro_x, test_body_gyro_y, test_body_gyro_z], axis=2)
+                        test_body_gyro_x, test_body_gyro_y, test_body_gyro_z], axis=2)
         
         # Load test labels and adjust from 1-indexed to 0-indexed
         y_test = np.loadtxt(os.path.join(self.data_path, 'test/y_test.txt'))
@@ -151,7 +151,7 @@ class UCI_HARDataset:
         X_train = self._standardize_3d_tensor(X_train)
         X_test = self._standardize_3d_tensor(X_test)
         
-        # Handle zero-shot setting by reorganizing data as in paste.txt
+        # Handle zero-shot setting by reorganizing data
         if self.zero_shot:
             # Identify seen and unseen indices for both train and test sets
             train_seen_idx = np.where(np.isin(y_train, self.SEEN_LABELS))[0]
@@ -170,15 +170,16 @@ class UCI_HARDataset:
             X_test_unseen = X_test[test_unseen_idx]
             y_test_unseen = y_test[test_unseen_idx]
             
-            # Combine all seen data for training/validation as in paste.txt
-            new_X_train = np.concatenate([X_train_seen, X_test_seen], axis=0)
-            new_y_train = np.concatenate([y_train_seen, y_test_seen], axis=0)
+            # For train/val: use only the training seen data (not the combined data)
+            # This is a key change from your original implementation
+            new_X_train = X_train_seen
+            new_y_train = y_train_seen
             
-            # Use the original test seen data for test_seen split
-            new_X_test_seen = X_test_seen.copy()
-            new_y_test_seen = y_test_seen.copy()
+            # For test_seen: use only the test seen data
+            new_X_test_seen = X_test_seen
+            new_y_test_seen = y_test_seen
             
-            # Combine all unseen data for test_unseen split
+            # For test_unseen: use both train and test unseen data
             new_X_test_unseen = np.concatenate([X_train_unseen, X_test_unseen], axis=0)
             new_y_test_unseen = np.concatenate([y_train_unseen, y_test_unseen], axis=0)
         else:
@@ -238,7 +239,7 @@ class UCI_HARDataset:
                 self.accel_data = np.array([])
                 self.gyro_data = np.array([])
                 self.labels = np.array([])
-    
+        
     def _standardize_3d_tensor(self, data):
         """
         Standardize a 3D tensor as done in paste.txt.

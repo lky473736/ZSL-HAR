@@ -89,24 +89,13 @@ def print_header():
     {Fore.BLUE}\033[1mA Novel Contrastive Zero-Shot Learning for Human Activity Recognition\033[0m
     {Fore.BLUE}\033[1mGyuyeon Lim, Myung-Kyu Yi\033[0m
     
-    - Functioning Program
+    - Functioning Program : Seen -> Unseen (Zero-Shot Learning)
     - Feel free to contact on email "lky473736@gmail.com".
 """
     print('*' * 30)
     print(header)
     print('*' * 30)
 
-def print_menu():
-    """Print the main menu options."""
-    menu = """
-Please select an experiment type:
-[1] S→S (Same domain): Train and test on the same domain
-[2] S→U (Zero-shot): Train on seen classes, test on unseen classes
-[3] S→S (Domain adaptation): Train on one dataset, test on another
-[q] Quit
-"""
-    print(menu)
-    return input("Enter your choice: ")
 
 def print_dataset_menu():
     """Print the dataset selection menu."""
@@ -116,7 +105,7 @@ Please select a dataset:
 [2] WISDM: Wireless Sensor Data Mining Dataset
 [3] PAMAP2: Physical Activity Monitoring Dataset
 [4] mHealth: Mobile Health Dataset
-[b] Back to main menu
+[q] Quit the program
 """
     print(menu)
     return input("Enter your choice: ")
@@ -793,7 +782,6 @@ def run_zero_shot_experiment(dataset_name, dataset_path):
     log.info("Evaluating model on unseen classes with manual mappings...")
     test_unseen_true, test_unseen_pred, test_unseen_embeddings = evaluate_model(model, test_unseen_dataset, embedding_model)
 
-    # 수정된 코드 - 수동 매핑 적용
     unseen_metrics = evaluate_zero_shot_mapping(test_unseen_true, test_unseen_pred, manual_mappings)
     log.log_metrics(unseen_metrics, prefix="Unseen Classes")
     
@@ -979,35 +967,29 @@ def main():
     print_header()
     
     while True:
-        exp_choice = print_menu()
+        # exp_choice = print_menu()
         
-        if exp_choice.lower() == 'q':
-            print("\nThank you for using the Zero-Shot HAR System.")
-            break
+        # if exp_choice.lower() == 'q':
+        #     print("\nThank you for using the Zero-Shot HAR System.")
+        #     break
             
-        if exp_choice not in ['1', '2', '3']:
-            print("\nInvalid choice. Please try again.")
-            continue
+        # if exp_choice not in ['1', '2', '3']:
+        #     print("\nInvalid choice. Please try again.")
+        #     continue
             
         dataset_choice = print_dataset_menu()
-        
-        if dataset_choice.lower() == 'b':
-            continue
             
         if dataset_choice not in ['1', '2', '3', '4']:
+            if dataset_choice.lower() == 'q':
+                print ("Good Bye.")
+                break 
             print("\nInvalid dataset choice. Please try again.")
             continue
             
         dataset_name, dataset_path, available = check_dataset_availability(dataset_choice)
         
         if available:
-            if exp_choice == '1':
-                run_same_domain_experiment(dataset_name, dataset_path)
-            elif exp_choice == '2':
-                run_zero_shot_experiment(dataset_name, dataset_path)
-            elif exp_choice == '3':
-                run_domain_adaptation_experiment(dataset_name, dataset_path)
-                
+            run_zero_shot_experiment(dataset_name, dataset_path) 
             input("\nPress Enter to return to the main menu...")
 
 if __name__ == "__main__":

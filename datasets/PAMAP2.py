@@ -207,7 +207,7 @@ class PAMAP2Dataset(BaseDataset):
     
     def _process_zero_shot_data(self, df):
         """
-        Process data for zero-shot learning scenario.
+        Process data for zero-shot learning scenario (without SMOTE).
         
         Args:
             df (pandas.DataFrame): Preprocessed DataFrame
@@ -228,13 +228,9 @@ class PAMAP2Dataset(BaseDataset):
         X_unseen = df_unseen.drop(["activityID", "subjectID", "activityLabel"], axis=1)
         y_unseen = df_unseen["activityID"]
         
-        # Apply SMOTE for class balancing on seen classes
-        smote = SMOTE(random_state=42)
-        X_seen_smote, y_seen_smote = smote.fit_resample(X_seen, y_seen)
-        
         # Scale the data
         scaler = StandardScaler()
-        X_seen_smote_scaled = scaler.fit_transform(X_seen_smote)
+        X_seen_scaled = scaler.fit_transform(X_seen)
         X_unseen_scaled = scaler.transform(X_unseen)
         
         # Save normalization parameters
@@ -242,29 +238,29 @@ class PAMAP2Dataset(BaseDataset):
         self.std = scaler.scale_
         
         # Create DataFrames with scaled data
-        X_seen_smote_df = pd.DataFrame(X_seen_smote_scaled, columns=X_seen.columns)
+        X_seen_df = pd.DataFrame(X_seen_scaled, columns=X_seen.columns)
         X_unseen_df = pd.DataFrame(X_unseen_scaled, columns=X_unseen.columns)
         
         # Extract accelerometer and gyroscope data for ankle IMU (according to notebook)
         accel_cols = ["ankle_acc_x", "ankle_acc_y", "ankle_acc_z"]
         gyro_cols = ["ankle_gyro_x", "ankle_gyro_y", "ankle_gyro_z"]
         
-        X_accel_seen_smote = X_seen_smote_df[accel_cols].values
-        X_gyro_seen_smote = X_seen_smote_df[gyro_cols].values
+        X_accel_seen = X_seen_df[accel_cols].values
+        X_gyro_seen = X_seen_df[gyro_cols].values
         
         X_accel_unseen = X_unseen_df[accel_cols].values
         X_gyro_unseen = X_unseen_df[gyro_cols].values
         
         # Split into windows
-        X_accel_seq_seen, y_seq_seen = self.split_windows(X_accel_seen_smote, y_seen_smote, 
+        X_accel_seq_seen, y_seq_seen = self.split_windows(X_accel_seen, y_seen.values, 
                                                         overlap=True, clean=self.clean)
-        X_gyro_seq_seen, _ = self.split_windows(X_gyro_seen_smote, y_seen_smote, 
-                                               overlap=True, clean=self.clean)
+        X_gyro_seq_seen, _ = self.split_windows(X_gyro_seen, y_seen.values, 
+                                            overlap=True, clean=self.clean)
         
         X_accel_seq_unseen, y_seq_unseen = self.split_windows(X_accel_unseen, y_unseen.values, 
-                                                             overlap=True, clean=self.clean)
+                                                            overlap=True, clean=self.clean)
         X_gyro_seq_unseen, _ = self.split_windows(X_gyro_unseen, y_unseen.values, 
-                                                 overlap=True, clean=self.clean)
+                                                overlap=True, clean=self.clean)
         
         # Split seen data into train and validation
         X_accel_train, X_accel_val, X_gyro_train, X_gyro_val, y_train, y_val = train_test_split(
