@@ -21,6 +21,10 @@ from datasets.base_dataset import BaseDataset
 class PAMAP2Dataset(BaseDataset):
     """PAMAP2 dataset handler for HAR with zero-shot learning capability."""
     
+    # 클래스 변수로 데이터 캐싱
+    _cached_data = None
+    _is_data_loaded = False
+    
     def __init__(self, data_path, window_width=128, stride=64, 
                  clean=True, include_null=False, zero_shot=True, split='train'):
         """
@@ -97,8 +101,18 @@ class PAMAP2Dataset(BaseDataset):
     
     def load_data(self):
         """Load and preprocess the PAMAP2 dataset."""
-        print("Loading PAMAP2 dataset...")
-        
+        # 데이터가 이미 로드되었는지 확인
+        if not PAMAP2Dataset._is_data_loaded:
+            print("Loading PAMAP2 dataset...")
+            self._load_raw_data()
+        else:
+            print("Using cached PAMAP2 dataset...")
+            
+        # 각 데이터 분할에 따라 적절한 데이터 설정
+        self._setup_data_split()
+    
+    def _load_raw_data(self):
+        """Load raw data and cache it for reuse."""
         # Define file paths for protocol and optional data
         data_path_protocol = os.path.join(self.data_path, "Protocol")
         data_path_optional = os.path.join(self.data_path, "Optional")
@@ -193,30 +207,46 @@ class PAMAP2Dataset(BaseDataset):
                 
                 df[col] = values
         
-        # Fill any remaining NaN values
-        df = df.fillna(method='bfill')
+        # Fill any remaining NaN values - 경고 메시지 수정
+        df = df.bfill()  # method='bfill' 대신 bfill() 메서드 직접 호출
         remaining_nulls = df.isnull().sum().sum()
         if remaining_nulls > 0:
             df = df.fillna(df.mean())
         
-        # Process data according to zero-shot setting
+        # 데이터 캐시 생성
         if self.zero_shot:
-            self._process_zero_shot_data(df)
+            # Split into seen and unseen classes
+            df_seen = df[df["activityID"].isin(self.seen_labels)]
+            df_unseen = df[df["activityID"].isin(self.unseen_labels)]
+            
+            # 데이터 저장
+            PAMAP2Dataset._cached_data = {
+                'df_seen': df_seen,
+                'df_unseen': df_unseen
+            }
         else:
-            self._process_standard_data(df)
+            PAMAP2Dataset._cached_data = {
+                'df': df
+            }
+            
+        PAMAP2Dataset._is_data_loaded = True
     
-    def _process_zero_shot_data(self, df):
+    def _setup_data_split(self):
+        """Set up data according to the requested split."""
+        if self.zero_shot:
+            self._process_zero_shot_data()
+        else:
+            self._process_standard_data()
+    
+    def _process_zero_shot_data(self):
         """
         Process data for zero-shot learning scenario (without SMOTE).
-        
-        Args:
-            df (pandas.DataFrame): Preprocessed DataFrame
         """
         print("Processing data for zero-shot learning...")
         
-        # Split into seen and unseen classes
-        df_seen = df[df["activityID"].isin(self.seen_labels)]
-        df_unseen = df[df["activityID"].isin(self.unseen_labels)]
+        # 캐시된 데이터 사용
+        df_seen = PAMAP2Dataset._cached_data['df_seen']
+        df_unseen = PAMAP2Dataset._cached_data['df_unseen']
         
         print(f"Seen classes: {len(df_seen)} samples")
         print(f"Unseen classes: {len(df_unseen)} samples")
@@ -274,17 +304,29 @@ class PAMAP2Dataset(BaseDataset):
             test_size=0.2, random_state=42, stratify=y_train
         )
         
+        # 필요한 속성들 저장
+        self.accel_data = None
+        self.gyro_data = None
+        
         # Store data based on split value
         if self.split == 'train':
+            self.accel_data = X_accel_train
+            self.gyro_data = X_gyro_train
             self.data = np.concatenate([X_accel_train, X_gyro_train], axis=1)
             self.labels = y_train.astype(np.int32)
         elif self.split == 'val':
+            self.accel_data = X_accel_val
+            self.gyro_data = X_gyro_val
             self.data = np.concatenate([X_accel_val, X_gyro_val], axis=1)
             self.labels = y_val.astype(np.int32)
         elif self.split == 'test_seen':
+            self.accel_data = X_accel_test_seen
+            self.gyro_data = X_gyro_test_seen
             self.data = np.concatenate([X_accel_test_seen, X_gyro_test_seen], axis=1)
             self.labels = y_test_seen.astype(np.int32)
         else:  # 'test_unseen'
+            self.accel_data = X_accel_seq_unseen
+            self.gyro_data = X_gyro_seq_unseen
             self.data = np.concatenate([X_accel_seq_unseen, X_gyro_seq_unseen], axis=1)
             self.labels = y_seq_unseen.astype(np.int32)
         
@@ -306,14 +348,14 @@ class PAMAP2Dataset(BaseDataset):
         print(f"Test set (seen): {self.test_seen_data.shape}, {self.test_seen_labels.shape}")
         print(f"Test set (unseen): {self.test_unseen_data.shape}, {self.test_unseen_labels.shape}")
     
-    def _process_standard_data(self, df):
+    def _process_standard_data(self):
         """
         Process data for standard learning scenario (not zero-shot).
-        
-        Args:
-            df (pandas.DataFrame): Preprocessed DataFrame
         """
         print("Processing data for standard learning...")
+        
+        # 캐시된 데이터 사용
+        df = PAMAP2Dataset._cached_data['df']
         
         # Split by subject ID
         subject_ids = df["subjectID"].unique()
@@ -394,14 +436,24 @@ class PAMAP2Dataset(BaseDataset):
         X_gyro_seq_test, _ = self.split_windows(X_gyro_test, y_test.values, 
                                                overlap=True, clean=self.clean)
         
+        # 필요한 속성들 초기화
+        self.accel_data = None
+        self.gyro_data = None
+        
         # Store data based on requested split
         if self.split == 'train':
+            self.accel_data = X_accel_seq_train
+            self.gyro_data = X_gyro_seq_train
             self.data = np.concatenate([X_accel_seq_train, X_gyro_seq_train], axis=1)
             self.labels = y_seq_train.astype(np.int32)
         elif self.split == 'val':
+            self.accel_data = X_accel_seq_val
+            self.gyro_data = X_gyro_seq_val
             self.data = np.concatenate([X_accel_seq_val, X_gyro_seq_val], axis=1)
             self.labels = y_seq_val.astype(np.int32)
         else:  # 'test'
+            self.accel_data = X_accel_seq_test
+            self.gyro_data = X_gyro_seq_test
             self.data = np.concatenate([X_accel_seq_test, X_gyro_seq_test], axis=1)
             self.labels = y_seq_test.astype(np.int32)
         
@@ -478,23 +530,34 @@ class PAMAP2Dataset(BaseDataset):
             y_windows = y_windows[:window_idx]
         
         return X_windows, y_windows
-
-if __name__ == "__main__":
-    # Test the dataset loading
-    data_path = os.path.join("data", "PAMAP2_Dataset")
-    dataset = PAMAP2Dataset(data_path, zero_shot=True)
     
-    # Print dataset structure and class distribution
-    print("\nDataset Structure:")
-    print(f"Train data shape: {dataset.train_data.shape}")
-    print(f"Validation data shape: {dataset.val_data.shape}")
-    print(f"Test seen data shape: {dataset.test_seen_data.shape}") 
-    print(f"Test unseen data shape: {dataset.test_unseen_data.shape}")
-    
-    print("\nClass distribution in train set:")
-    train_label_counts = Counter(dataset.train_labels)
-    for label, count in sorted(train_label_counts.items()):
-        print(f"{dataset.label_map[label]}: {count} samples")
+    def get_tf_dataset(self, batch_size=64, shuffle=True):
+        """
+        Convert the data to a TensorFlow dataset.
         
-    print("\nSeen classes:", [dataset.label_map[label] for label in dataset.seen_labels])
-    print("Unseen classes:", [dataset.label_map[label] for label in dataset.unseen_labels])
+        Args:
+            batch_size (int): Batch size for the dataset
+            shuffle (bool): Whether to shuffle the dataset
+            
+        Returns:
+            tf.data.Dataset: TensorFlow dataset
+        """
+        import tensorflow as tf
+        
+        # Create a dictionary with accel and gyro data
+        features = {
+            'accel': self.accel_data,
+            'gyro': self.gyro_data
+        }
+        
+        # Create a TensorFlow dataset
+        dataset = tf.data.Dataset.from_tensor_slices((features, self.labels))
+        
+        # Shuffle if requested
+        if shuffle:
+            dataset = dataset.shuffle(buffer_size=len(self.labels))
+        
+        # Batch the dataset
+        dataset = dataset.batch(batch_size)
+        
+        return dataset

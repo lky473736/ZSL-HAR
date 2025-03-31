@@ -6,7 +6,6 @@ Main entry point for the Zero-Shot Human Activity Recognition System.
 Provides an interactive interface for running experiments.
 """
 
-# Import utility modules
 from utils.logger import setup_logger
 from utils.metrics import calculate_metrics, calculate_per_class_metrics, evaluate_zero_shot_mapping
 from models.model import create_zeroshot_model, create_embedding_model
