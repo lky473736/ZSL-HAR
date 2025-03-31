@@ -70,7 +70,9 @@ def print_header():
     print()
     header = f"""
     {Fore.BLUE}\033[1mHAR Model Training Program\033[0m
+    
     {Fore.BLUE}\033[1mA Novel Contrastive Zero-Shot Learning for Human Activity Recognition\033[0m
+    {Fore.BLUE}\033[1mGyuyeon Lim, Myung-Kyu Yi\033[0m
     
     - This simplified script only trains the model without testing/evaluation
     - Output directory will contain the trained model weights
