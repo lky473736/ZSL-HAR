@@ -6,6 +6,11 @@ Main entry point for the Zero-Shot Human Activity Recognition System.
 Provides an interactive interface for running experiments.
 """
 
+# Import utility modules
+from utils.logger import setup_logger
+from utils.metrics import calculate_metrics, calculate_per_class_metrics, evaluate_zero_shot_mapping
+from models.model import create_zeroshot_model, create_embedding_model
+
 import os
 import sys
 import argparse
@@ -785,11 +790,11 @@ def run_zero_shot_experiment(dataset_name, dataset_path):
     log.info(f"Confusion matrix for seen classes saved to {seen_cm_path}")
     
     # ===== Evaluate on Unseen Classes =====
-    log.info("Evaluating model on unseen classes...")
+    log.info("Evaluating model on unseen classes with manual mappings...")
     test_unseen_true, test_unseen_pred, test_unseen_embeddings = evaluate_model(model, test_unseen_dataset, embedding_model)
-    
-    # Calculate metrics for unseen classes - 이미 config.py에 있는 manual_mappings 사용
-    unseen_metrics = calculate_metrics(test_unseen_true, test_unseen_pred)
+
+    # 수정된 코드 - 수동 매핑 적용
+    unseen_metrics = evaluate_zero_shot_mapping(test_unseen_true, test_unseen_pred, manual_mappings)
     log.log_metrics(unseen_metrics, prefix="Unseen Classes")
     
     # Calculate prototypes for seen and unseen classes
