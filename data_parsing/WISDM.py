@@ -294,7 +294,7 @@ if __name__ == "__main__":
         # Download the dataset if it doesn't exist
         if not os.path.exists(args.data_path):
             print("Downloading WISDM dataset...")
-            url = "https://www.cis.fordham.edu/wisdm/includes/datasets/latest/WISDM_ar_v1.1_raw.txt"
+            url = "https://www.cis.fordham.edu/wisdm/includes/data_parsing/latest/WISDM_ar_v1.1_raw.txt"
             
             # Create directory if it doesn't exist
             os.makedirs(os.path.dirname(args.data_path), exist_ok=True)
@@ -311,7 +311,7 @@ if __name__ == "__main__":
     test_seen_set = WISDMDataset(args.data_path, zero_shot=True, split='test_seen')
     test_unseen_set = WISDMDataset(args.data_path, zero_shot=True, split='test_unseen')
     
-    # Create TensorFlow datasets
+    # Create TensorFlow data_parsing
     train_dataset = train_set.get_tf_dataset(batch_size=32, shuffle=True)
     val_dataset = val_set.get_tf_dataset(batch_size=32, shuffle=False)
     test_seen_dataset = test_seen_set.get_tf_dataset(batch_size=32, shuffle=False)

@@ -48,7 +48,7 @@ init(autoreset=True)
 # Dataset metadata
 DATASET_METADATA = {
     'UCI_HAR': {
-        'module_name': 'datasets.UCI_HAR',
+        'module_name': 'data_parsing.UCI_HAR',
         'class_name': 'UCI_HARDataset',
         'num_classes': 6,
         'seen_labels': UCI_HAR_SEEN_LABELS if 'UCI_HAR_SEEN_LABELS' in globals() else None,
@@ -56,7 +56,7 @@ DATASET_METADATA = {
         'manual_mappings': UCI_HAR_MANUAL_MAPPINGS if 'UCI_HAR_MANUAL_MAPPINGS' in globals() else None
     },
     'PAMAP2': {
-        'module_name': 'datasets.PAMAP2',
+        'module_name': 'data_parsing.PAMAP2',
         'class_name': 'PAMAP2Dataset',
         'num_classes': 18,
         'seen_labels': PAMAP2_SEEN_LABELS if 'PAMAP2_SEEN_LABELS' in globals() else None,
@@ -64,7 +64,7 @@ DATASET_METADATA = {
         'manual_mappings': PAMAP2_MANUAL_MAPPINGS if 'PAMAP2_MANUAL_MAPPINGS' in globals() else None
     },
     'WISDM': {
-        'module_name': 'datasets.WISDM',
+        'module_name': 'data_parsing.WISDM',
         'class_name': 'WISDMDataset',
         'num_classes': 6,
         'seen_labels': WISDM_SEEN_LABELS if 'WISDM_SEEN_LABELS' in globals() else None,
@@ -72,7 +72,7 @@ DATASET_METADATA = {
         'manual_mappings': WISDM_MANUAL_MAPPINGS if 'WISDM_MANUAL_MAPPINGS' in globals() else None
     },
     'mHealth': {
-        'module_name': 'datasets.mHealth',
+        'module_name': 'data_parsing.mHealth',
         'class_name': 'mHealthDataset',
         'num_classes': 12,
         'seen_labels': MHEALTH_SEEN_LABELS if 'MHEALTH_SEEN_LABELS' in globals() else None,
@@ -119,14 +119,14 @@ def check_dataset_availability(dataset_choice):
     Returns:
         tuple: (dataset_name, dataset_path, available)
     """
-    datasets = {
+    data_parsing = {
         '1': ('UCI_HAR', DATASET_PATHS['UCI_HAR']),
         '2': ('WISDM', DATASET_PATHS['WISDM']),
         '3': ('PAMAP2', DATASET_PATHS['PAMAP2']),
         '4': ('mHealth', DATASET_PATHS['mHealth'])
     }
     
-    dataset_name, dataset_path = datasets[dataset_choice]
+    dataset_name, dataset_path = data_parsing[dataset_choice]
     
     if not os.path.exists(dataset_path):
         print(f"\nError: Dataset {dataset_name} not found at {dataset_path}")
@@ -153,13 +153,13 @@ def load_dataset(dataset_name, dataset_path, zero_shot=True):
     dataset_module = importlib.import_module(metadata['module_name'])
     dataset_class = getattr(dataset_module, metadata['class_name'])
     
-    # Create datasets
+    # Create data_parsing
     train_set = dataset_class(dataset_path, zero_shot=zero_shot, split='train')
     val_set = dataset_class(dataset_path, zero_shot=zero_shot, split='val')
     test_seen_set = dataset_class(dataset_path, zero_shot=zero_shot, split='test_seen')
     test_unseen_set = dataset_class(dataset_path, zero_shot=zero_shot, split='test_unseen')
     
-    # Create TensorFlow datasets
+    # Create TensorFlow data_parsing
     train_dataset = train_set.get_tf_dataset(batch_size=BATCH_SIZE, shuffle=True)
     val_dataset = val_set.get_tf_dataset(batch_size=BATCH_SIZE, shuffle=False)
     test_seen_dataset = test_seen_set.get_tf_dataset(batch_size=BATCH_SIZE, shuffle=False)

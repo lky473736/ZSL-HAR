@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Base class for all HAR datasets.
+Base class for all HAR data_parsing.
 Provides common functionality for loading, preprocessing, and windowing data.
 """
 
@@ -16,7 +16,7 @@ from collections import Counter
 from scipy.signal import butter, lfilter
 
 class BaseDataset(ABC):
-    """Base class for HAR datasets with common preprocessing methods."""
+    """Base class for HAR data_parsing with common preprocessing methods."""
     
     def __init__(self, data_path, window_width=128, stride=64, sampling_rate=50):
         """

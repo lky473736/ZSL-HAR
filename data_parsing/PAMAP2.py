@@ -16,7 +16,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from imblearn.over_sampling import SMOTE
 
-from datasets.base_dataset import BaseDataset
+from data_parsing.base_dataset import BaseDataset
 
 class PAMAP2Dataset(BaseDataset):
     """PAMAP2 dataset handler for HAR with zero-shot learning capability."""
@@ -330,7 +330,7 @@ class PAMAP2Dataset(BaseDataset):
             self.data = np.concatenate([X_accel_seq_unseen, X_gyro_seq_unseen], axis=1)
             self.labels = y_seq_unseen.astype(np.int32)
         
-        # Store all datasets for convenience
+        # Store all data_parsing for convenience
         self.train_data = np.concatenate([X_accel_train, X_gyro_train], axis=1)
         self.train_labels = y_train.astype(np.int32)
         
@@ -457,7 +457,7 @@ class PAMAP2Dataset(BaseDataset):
             self.data = np.concatenate([X_accel_seq_test, X_gyro_seq_test], axis=1)
             self.labels = y_seq_test.astype(np.int32)
         
-        # Store all datasets for convenience
+        # Store all data_parsing for convenience
         self.train_data = np.concatenate([X_accel_seq_train, X_gyro_seq_train], axis=1)
         self.train_labels = y_seq_train.astype(np.int32)
         

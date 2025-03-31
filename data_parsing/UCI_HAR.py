@@ -340,7 +340,7 @@ if __name__ == "__main__":
     test_seen_set = UCI_HARDataset(args.data_path, zero_shot=True, split='test_seen')
     test_unseen_set = UCI_HARDataset(args.data_path, zero_shot=True, split='test_unseen')
     
-    # Create TensorFlow datasets
+    # Create TensorFlow data_parsing
     train_dataset = train_set.get_tf_dataset(batch_size=32, shuffle=True)
     val_dataset = val_set.get_tf_dataset(batch_size=32, shuffle=False)
     test_seen_dataset = test_seen_set.get_tf_dataset(batch_size=32, shuffle=False)
