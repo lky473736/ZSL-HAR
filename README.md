@@ -1,4 +1,4 @@
-# 0x01
+# ZSL-HAR
 **(paper source) A Novel Contrastive Zero-Shot Learning for Human Activity Recognition**
 
 This repository implements the methodology proposed in the paper "A Novel Contrastive Zero-Shot Learning for Human Activity Recognition".
