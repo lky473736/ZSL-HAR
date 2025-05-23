@@ -5,27 +5,24 @@
 
 This repository implements the methodology proposed in the paper "Contrastive Representation Learning From Labeled Simple Activities for Zero-Shot Recognition of Complex Human Actions on Wearable Devices".
 
-## Overview
+## Datasets
 
-This project provides a zero-shot learning framework for human activity recognition (HAR) using wearable sensor data. The model is designed to recognize unseen activities by leveraging similarities with seen activities, making it particularly valuable in real-world scenarios where collecting labeled data for all possible activities is impractical.
-
-## data_parsing
-
-The system works with four popular HAR data_parsing.
+The system works with four popular HAR datasets.
 
 1. **UCI HAR Dataset**: Contains data from smartphone sensors for 6 activities.
-   - Download: https://archive.ics.uci.edu/ml/data_parsing/human+activity+recognition+using+smartphones
+   - Download: https://archive.ics.uci.edu/ml/datasets/human+activity+recognition+using+smartphones
 
 2. **WISDM Dataset**: Contains accelerometer data from smartphones for 6 physical activities.
    - Download: https://www.cis.fordham.edu/wisdm/dataset.php
 
-3. **PAMAP2 Dataset**: Physical Activity Monitoring dataset with data from 18 different physical activities.
-   - Download: https://archive.ics.uci.edu/ml/data_parsing/pamap2+physical+activity+monitoring
+3. **PAMAP2 Dataset**: Physical Activity Monitoring dataset with data from 18 different physical activities. (At this 12.)
+   - Download: https://archive.ics.uci.edu/ml/datasets/pamap2+physical+activity+monitoring
 
 4. **mHealth Dataset**: Contains data from body-worn sensors for 12 physical activities.
-   - Download: https://archive.ics.uci.edu/ml/data_parsing/mhealth+dataset
+   - Download: https://archive.ics.uci.edu/ml/datasets/mhealth+dataset
 
 Once downloaded, place each dataset in the appropriate directory under `./data/` as specified in the `config.py` file.
+
 
 ## Directory Structure
 
@@ -33,7 +30,7 @@ Once downloaded, place each dataset in the appropriate directory under `./data/`
 zero-shot-har/
 ├── config.py                # Configuration parameters
 ├── train.py                 # Main entry point for training model
-├── data/                    # Directory for data_parsing
+├── data/                  # Directory for datasets
 │   ├── UCI_HAR_Dataset/
 │   ├── WISDM_ar_v1.1/
 │   ├── PAMAP2_Dataset/
@@ -45,15 +42,9 @@ zero-shot-har/
 │   ├── WISDM.py
 │   ├── PAMAP2.py
 │   └── mHealth.py
-├── models/                  # Model architecture
-│   ├── __init__.py
-│   └── model.py
-├── utils/                   # Utility functions
-│   ├── __init__.py
-│   ├── logger.py
-│   ├── metrics.py
-│   └── visualization.py
-└── testing/                 # Output directory for experimental results
+└── model/                  # Model architecture
+    ├── __init__.py
+    └── model.py
 ```
 
 ## Requirements
