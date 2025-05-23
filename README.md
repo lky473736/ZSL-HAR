@@ -81,6 +81,8 @@ pip install -r requirements.txt
 
 ## Model Architecture
 
+<p align="center"><img src='./model_architecture.png'></p>
+
 The model implements a dual-branch architecture with:
 - Temporal Convolutional Network (TCN) blocks
 - Bidirectional GRU layers
