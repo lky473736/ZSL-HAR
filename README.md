@@ -1,9 +1,7 @@
 # ZSL-HAR
 **(paper source) Contrastive Representation Learning From Labeled Simple Activities for Zero-Shot Recognition of Complex Human Actions on Wearable Devices (https://github.com/lky473736/ZSL-HAR.git)**
 
-<div style ="text-align:center";>
-   <img src='./graphical_abstract.png' width='500px'>
-</div>
+<p align="center"><img src='./graphical_abstract.png'></p>
 
 This repository implements the methodology proposed in the paper "Contrastive Representation Learning From Labeled Simple Activities for Zero-Shot Recognition of Complex Human Actions on Wearable Devices".
 
