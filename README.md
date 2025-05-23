@@ -1,7 +1,11 @@
 # ZSL-HAR
-**(paper source) A Novel Contrastive Zero-Shot Learning for Human Activity Recognition**
+**(paper source) Contrastive Representation Learning From Labeled Simple Activities for Zero-Shot Recognition of Complex Human Actions on Wearable Devices (https://github.com/lky473736/ZSL-HAR.git)**
 
-This repository implements the methodology proposed in the paper "A Novel Contrastive Zero-Shot Learning for Human Activity Recognition".
+<div style ="text-align:center";>
+   <img src='./graphical_abstract.png' width='500px'>
+</div>
+
+This repository implements the methodology proposed in the paper "Contrastive Representation Learning From Labeled Simple Activities for Zero-Shot Recognition of Complex Human Actions on Wearable Devices".
 
 ## Overview
 
@@ -92,7 +96,7 @@ If you use this code in your research, please cite:
 
 ```
 @article{lim2025novel,
-  title = {A Novel Contrastive Zero-Shot Learning for Human Activity Recognition},
+  title = {Contrastive Representation Learning From Labeled Simple Activities for Zero-Shot Recognition of Complex Human Actions on Wearable Devices},
   author={Gyuyeon Lim and Myung-Kyu Yi}
   journal={},
   volume={},

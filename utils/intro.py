@@ -85,7 +85,7 @@ def print_header():
     """Print the system header with blue title."""
     print()
     header = f"""
-    {Fore.BLUE}\033[1mA Novel Contrastive Zero-Shot Learning for Human Activity Recognition\033[0m
+    {Fore.BLUE}\033[1mContrastive Representation Learning From Labeled Simple Activities for Zero-Shot Recognition of Complex Human Actions on Wearable Devices\033[0m
     {Fore.BLUE}\033[1mGyuyeon Lim, Myung-Kyu Yi\033[0m
     
     - Functioning Program : Seen -> Unseen (Zero-Shot Learning)
