@@ -4,6 +4,7 @@
 """
 Simplified HAR Model Training Script
 This script focuses only on training the model without testing and evaluation.
+Uses the corrected loss functions from the paper.
 """
 
 import os
@@ -71,7 +72,8 @@ def print_header():
     header = f"""
     {Fore.BLUE}\033[1mHAR Model Training Program\033[0m
     
-    {Fore.BLUE}\033[1mContrastive Representation Learning From Labeled Simple Activities for Zero-Shot Recognition of Complex Human Actions on Wearable Devices\033[0m
+    {Fore.BLUE}\033[1mContrastive Learning From Labeled Simple Activities for Zero-Shot Recognition of Complex Human Actions on Wearable Devices\033[0m
+    
     {Fore.BLUE}\033[1mGyuyeon Lim, Myung-Kyu Yi\033[0m
     
     - This simplified script only trains the model without testing/evaluation
@@ -150,7 +152,7 @@ def load_dataset(dataset_name, dataset_path, zero_shot=True):
 
 def create_train_step():
     """
-    Create a custom training step function.
+    Create a custom training step function using the corrected loss computation.
     
     Returns:
         function: Training step function
@@ -159,31 +161,27 @@ def create_train_step():
     def train_step(model, optimizer, x_accel, x_gyro, labels):
         with tf.GradientTape() as tape:
             # Forward pass
-            ssl_output, cls_output = model([x_accel, x_gyro], training=True)
+            similarity_matrix, cls_output = model([x_accel, x_gyro], training=True)
             
-            # Self-supervised contrastive loss
-            ssl_loss = tf.keras.losses.CategoricalCrossentropy(from_logits=True)(
-                tf.one_hot(tf.range(tf.shape(ssl_output)[0]), tf.shape(ssl_output)[0]), 
-                ssl_output
+            # Import loss functions from model
+            from models.model import compute_total_loss
+            
+            # Compute total loss using paper equations
+            total_loss, cls_loss, scl_loss = compute_total_loss(
+                similarity_matrix, labels, cls_output, lambda_scl=LAMBDA_SSL
             )
-            
-            # Classification loss
-            cls_loss = tf.keras.losses.CategoricalCrossentropy()(labels, cls_output)
-            
-            # Total loss
-            total_loss = LAMBDA_SSL * ssl_loss + LAMBDA_CLS * cls_loss
         
         # Calculate gradients and update weights
         gradients = tape.gradient(total_loss, model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
         
-        return total_loss, ssl_loss, cls_loss, cls_output
+        return total_loss, cls_loss, scl_loss, cls_output
     
     return train_step
 
 def create_eval_step():
     """
-    Create a custom evaluation step function.
+    Create a custom evaluation step function using the corrected loss computation.
     
     Returns:
         function: Evaluation step function
@@ -191,21 +189,17 @@ def create_eval_step():
     @tf.function
     def eval_step(model, x_accel, x_gyro, labels):
         # Forward pass
-        ssl_output, cls_output = model([x_accel, x_gyro], training=False)
+        similarity_matrix, cls_output = model([x_accel, x_gyro], training=False)
         
-        # Self-supervised contrastive loss
-        ssl_loss = tf.keras.losses.CategoricalCrossentropy(from_logits=True)(
-            tf.one_hot(tf.range(tf.shape(ssl_output)[0]), tf.shape(ssl_output)[0]), 
-            ssl_output
+        # Import loss functions from model
+        from models.model import compute_total_loss
+        
+        # Compute total loss using paper equations
+        total_loss, cls_loss, scl_loss = compute_total_loss(
+            similarity_matrix, labels, cls_output, lambda_scl=LAMBDA_SSL
         )
         
-        # Classification loss
-        cls_loss = tf.keras.losses.CategoricalCrossentropy()(labels, cls_output)
-        
-        # Total loss
-        total_loss = LAMBDA_SSL * ssl_loss + LAMBDA_CLS * cls_loss
-        
-        return total_loss, ssl_loss, cls_loss, cls_output
+        return total_loss, cls_loss, scl_loss, cls_output
     
     return eval_step
 
@@ -236,7 +230,7 @@ def calculate_metrics(y_true, y_pred):
 
 def train_model(model, optimizer, train_dataset, val_dataset, num_classes, output_dir):
     """
-    Train the model.
+    Train the model using corrected loss functions.
     
     Args:
         model: TensorFlow model
@@ -258,12 +252,12 @@ def train_model(model, optimizer, train_dataset, val_dataset, num_classes, outpu
     best_epoch = 0
     history = {
         'loss': [],
-        'ssl_loss': [],
         'cls_loss': [],
+        'scl_loss': [],
         'accuracy': [],
         'val_loss': [],
-        'val_ssl_loss': [],
         'val_cls_loss': [],
+        'val_scl_loss': [],
         'val_accuracy': []
     }
     
@@ -276,8 +270,8 @@ def train_model(model, optimizer, train_dataset, val_dataset, num_classes, outpu
         
         # Training metrics
         train_loss = 0.0
-        train_ssl_loss = 0.0
         train_cls_loss = 0.0
+        train_scl_loss = 0.0
         train_accuracy = 0.0
         train_samples = 0
         
@@ -291,7 +285,7 @@ def train_model(model, optimizer, train_dataset, val_dataset, num_classes, outpu
             y_one_hot = tf.one_hot(y, depth=num_classes)
             
             # Training step
-            batch_loss, batch_ssl_loss, batch_cls_loss, batch_outputs = train_step_fn(
+            batch_loss, batch_cls_loss, batch_scl_loss, batch_outputs = train_step_fn(
                 model, optimizer, x['accel'], x['gyro'], y_one_hot
             )
 
@@ -303,8 +297,8 @@ def train_model(model, optimizer, train_dataset, val_dataset, num_classes, outpu
             # Update metrics
             batch_size = tf.shape(y)[0]
             train_loss += batch_loss * tf.cast(batch_size, tf.float32)
-            train_ssl_loss += batch_ssl_loss * tf.cast(batch_size, tf.float32)
             train_cls_loss += batch_cls_loss * tf.cast(batch_size, tf.float32)
+            train_scl_loss += batch_scl_loss * tf.cast(batch_size, tf.float32)
             
             batch_accuracy = tf.reduce_mean(equals)
             train_accuracy += batch_accuracy * tf.cast(batch_size, tf.float32)
@@ -313,14 +307,14 @@ def train_model(model, optimizer, train_dataset, val_dataset, num_classes, outpu
         
         # Calculate average metrics
         train_loss = train_loss / tf.cast(train_samples, tf.float32)
-        train_ssl_loss = train_ssl_loss / tf.cast(train_samples, tf.float32)
         train_cls_loss = train_cls_loss / tf.cast(train_samples, tf.float32)
+        train_scl_loss = train_scl_loss / tf.cast(train_samples, tf.float32)
         train_accuracy = train_accuracy / tf.cast(train_samples, tf.float32)
         
         # Validation metrics
         val_loss = 0.0
-        val_ssl_loss = 0.0
         val_cls_loss = 0.0
+        val_scl_loss = 0.0
         val_accuracy = 0.0
         val_samples = 0
         val_true = []
@@ -335,7 +329,7 @@ def train_model(model, optimizer, train_dataset, val_dataset, num_classes, outpu
             y_one_hot = tf.one_hot(y, depth=num_classes)
             
             # Evaluation step
-            batch_loss, batch_ssl_loss, batch_cls_loss, batch_outputs = eval_step_fn(
+            batch_loss, batch_cls_loss, batch_scl_loss, batch_outputs = eval_step_fn(
                 model, x['accel'], x['gyro'], y_one_hot
             )
 
@@ -347,8 +341,8 @@ def train_model(model, optimizer, train_dataset, val_dataset, num_classes, outpu
             # Update metrics
             batch_size = tf.shape(y)[0]
             val_loss += batch_loss * tf.cast(batch_size, tf.float32)
-            val_ssl_loss += batch_ssl_loss * tf.cast(batch_size, tf.float32)
             val_cls_loss += batch_cls_loss * tf.cast(batch_size, tf.float32)
+            val_scl_loss += batch_scl_loss * tf.cast(batch_size, tf.float32)
             
             # Calculate accuracy
             batch_accuracy = tf.reduce_mean(equals)
@@ -362,8 +356,8 @@ def train_model(model, optimizer, train_dataset, val_dataset, num_classes, outpu
         
         # Calculate average metrics
         val_loss = val_loss / tf.cast(val_samples, tf.float32)
-        val_ssl_loss = val_ssl_loss / tf.cast(val_samples, tf.float32)
         val_cls_loss = val_cls_loss / tf.cast(val_samples, tf.float32)
+        val_scl_loss = val_scl_loss / tf.cast(val_samples, tf.float32)
         val_accuracy = val_accuracy / tf.cast(val_samples, tf.float32)
         
         # Calculate F1 score and other metrics
@@ -372,20 +366,20 @@ def train_model(model, optimizer, train_dataset, val_dataset, num_classes, outpu
         
         # Update history
         history['loss'].append(float(train_loss))
-        history['ssl_loss'].append(float(train_ssl_loss))
         history['cls_loss'].append(float(train_cls_loss))
+        history['scl_loss'].append(float(train_scl_loss))
         history['accuracy'].append(float(train_accuracy))
         history['val_loss'].append(float(val_loss))
-        history['val_ssl_loss'].append(float(val_ssl_loss))
         history['val_cls_loss'].append(float(val_cls_loss))
+        history['val_scl_loss'].append(float(val_scl_loss))
         history['val_accuracy'].append(float(val_accuracy))
         
         # Log epoch results
         epoch_time = time.time() - start_time
         print(f"\rEpoch {epoch+1}/{EPOCHS} completed in {epoch_time:.2f}s")
         
-        train_metrics_str = f"loss={float(train_loss):.4f}, accuracy={float(train_accuracy):.4f}"
-        val_metrics_str = f"val_loss={float(val_loss):.4f}, val_accuracy={float(val_accuracy):.4f}, val_f1={val_f1:.4f}"
+        train_metrics_str = f"loss={float(train_loss):.4f}, cls_loss={float(train_cls_loss):.4f}, scl_loss={float(train_scl_loss):.4f}, accuracy={float(train_accuracy):.4f}"
+        val_metrics_str = f"val_loss={float(val_loss):.4f}, val_cls_loss={float(val_cls_loss):.4f}, val_scl_loss={float(val_scl_loss):.4f}, val_accuracy={float(val_accuracy):.4f}, val_f1={val_f1:.4f}"
         print(f"Training: {train_metrics_str}")
         print(f"Validation: {val_metrics_str}")
         
@@ -467,8 +461,8 @@ def train_model_for_dataset(dataset_name, dataset_path):
         f.write(f"Epochs: {EPOCHS}\n")
         f.write(f"Learning rate: {LEARNING_RATE}\n")
         f.write(f"Weight decay: {WEIGHT_DECAY}\n")
-        f.write(f"Lambda SSL: {LAMBDA_SSL}\n")
-        f.write(f"Lambda CLS: {LAMBDA_CLS}\n")
+        f.write(f"Lambda SSL (contrastive): {LAMBDA_SSL}\n")
+        f.write(f"Lambda CLS (classification): {LAMBDA_CLS}\n")
     print(f"Configuration saved to {config_file}")
     
     # Train model
