@@ -122,8 +122,18 @@ def set_seed(seed=SEED):
     # Configure GPU memory growth to avoid memory allocation issues
     gpus = tf.config.experimental.list_physical_devices('GPU')
     if gpus:
+        print(f"Found {len(gpus)} GPU(s):")
+        for i, gpu in enumerate(gpus):
+            print(f"   GPU {i}: {gpu.name}")
         try:
             for gpu in gpus:
                 tf.config.experimental.set_memory_growth(gpu, True)
         except RuntimeError as e:
             print(f"GPU configuration error: {e}")
+    
+    else : 
+        print (f"error")
+        exit()
+    print(f"TensorFlow built with CUDA: {tf.test.is_built_with_cuda()}")
+    print(f"CUDA available: {tf.test.is_gpu_available()}")
+    print("-" * 50)

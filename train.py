@@ -446,7 +446,11 @@ def train_model_for_dataset(dataset_name, dataset_path):
     # Create model
     print("Creating model...")
     model = create_zeroshot_model(window_width=128, num_classes=num_classes, embedding_dim=EMBEDDING_DIM)
-    
+
+    print(f"\nModel Architecture:")
+    print(f"Total parameters: {model.count_params():,}")
+    model.summary()  
+        
     # Define optimizer
     optimizer = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     
