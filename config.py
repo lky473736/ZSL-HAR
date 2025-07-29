@@ -131,9 +131,6 @@ def set_seed(seed=SEED):
         except RuntimeError as e:
             print(f"GPU configuration error: {e}")
     
-    else : 
-        print (f"error")
-        exit()
-    print(f"TensorFlow built with CUDA: {tf.test.is_built_with_cuda()}")
-    print(f"CUDA available: {tf.test.is_gpu_available()}")
-    print("-" * 50)
+        print(f"TensorFlow built with CUDA: {tf.test.is_built_with_cuda()}")
+        print(f"CUDA available: {tf.test.is_gpu_available()}")
+        print("-" * 50)

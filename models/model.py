@@ -78,10 +78,10 @@ def TCN_Block(x, filters, kernel_size=3, dilation_rate=1, prefix=""):
     return x
 
 # Transformer Block
-def Transformer_Block(x, embed_dim, num_heads=4, ff_dim=None, dropout=0.05, prefix=""):
+def Transformer_Block(x, embed_dim, num_heads=2, ff_dim=None, dropout=0.05, prefix=""):
     """Transformer Block with Multi-head Attention."""
     if ff_dim is None:
-        ff_dim = embed_dim * 4
+        ff_dim = embed_dim * 2  # Reduced from 4x to 2x
         
     residual = x
     x = layers.LayerNormalization(epsilon=1e-6, name=f"{prefix}_ln_1")(x)
@@ -105,35 +105,35 @@ def Transformer_Block(x, embed_dim, num_heads=4, ff_dim=None, dropout=0.05, pref
     return x
 
 # Encoder Model
-def Encoder(input_shape, out_dim=64, prefix=""):
+def Encoder(input_shape, out_dim=24, prefix=""):  # Further reduced from 32 to 24
     """Encoder with TCN + BiGRU + Transformer architecture."""
     input_layer = layers.Input(shape=input_shape, name=f"{prefix}_input")
     
-    x = layers.Conv1D(16, 1, padding="same", name=f"{prefix}_initial_projection")(input_layer)
+    x = layers.Conv1D(6, 1, padding="same", name=f"{prefix}_initial_projection")(input_layer)  # Further reduced from 8 to 6
     x = layers.BatchNormalization(name=f"{prefix}_initial_bn")(x)
     x = layers.LeakyReLU(alpha=0.1, name=f"{prefix}_initial_leaky")(x)
     
-    # 3 TCN Blocks
-    x = TCN_Block(x, 16, dilation_rate=1, prefix=f"{prefix}_tcn1")
+    # 3 TCN Blocks - further reduced filters
+    x = TCN_Block(x, 6, dilation_rate=1, prefix=f"{prefix}_tcn1")  # Further reduced from 8 to 6
     x = layers.MaxPooling1D(pool_size=2, name=f"{prefix}_maxpool_1")(x)
     x = layers.Dropout(0.1, name=f"{prefix}_dropout_1")(x)
     
-    x = TCN_Block(x, 32, dilation_rate=2, prefix=f"{prefix}_tcn2")
+    x = TCN_Block(x, 12, dilation_rate=2, prefix=f"{prefix}_tcn2")  # Further reduced from 16 to 12
     x = layers.MaxPooling1D(pool_size=2, name=f"{prefix}_maxpool_2")(x)
     x = layers.Dropout(0.1, name=f"{prefix}_dropout_2")(x)
     
-    x = TCN_Block(x, 64, dilation_rate=4, prefix=f"{prefix}_tcn3")
+    x = TCN_Block(x, 24, dilation_rate=4, prefix=f"{prefix}_tcn3")  # Further reduced from 32 to 24
     x = layers.MaxPooling1D(pool_size=2, name=f"{prefix}_maxpool_3")(x)
     x = layers.Dropout(0.1, name=f"{prefix}_dropout_3")(x)
     
-    # BiGRU
+    # BiGRU - further reduced units
     x = layers.Bidirectional(
-        layers.GRU(32, return_sequences=True, name=f"{prefix}_bigru"),
+        layers.GRU(12, return_sequences=True, name=f"{prefix}_bigru"),  # Further reduced from 16 to 12
         name=f"{prefix}_bidirectional"
     )(x)
     
-    # Transformer
-    x = Transformer_Block(x, embed_dim=64, num_heads=2, prefix=f"{prefix}_transformer_final")
+    # Transformer - further reduced embed_dim
+    x = Transformer_Block(x, embed_dim=24, num_heads=2, prefix=f"{prefix}_transformer_final")  # Further reduced from 32 to 24
     
     # Flatten and Dense
     x = layers.Flatten(name=f"{prefix}_flatten")(x)
@@ -146,7 +146,7 @@ def Encoder(input_shape, out_dim=64, prefix=""):
     
     return input_layer, x
 
-def create_zeroshot_model(window_width=128, num_classes=18, embedding_dim=64):
+def create_zeroshot_model(window_width=128, num_classes=18, embedding_dim=24):  # Further reduced from 32 to 24
     """Create a Zero-Shot HAR model with TCN and Transformer."""
     # Define Input and Encoders
     input_accel, encoded_accel = Encoder((window_width, 3), out_dim=embedding_dim, prefix="accel")
@@ -161,14 +161,14 @@ def create_zeroshot_model(window_width=128, num_classes=18, embedding_dim=64):
     # Classification head
     x = layers.Reshape((embedding_dim*2, 1), name="classifier_reshape_for_cnn")(merged_features)
 
-    # Two CNN blocks
-    x = layers.Conv1D(64, kernel_size=3, padding='same', name="classifier_conv1")(x)
+    # Two CNN blocks - further reduced filters
+    x = layers.Conv1D(24, kernel_size=3, padding='same', name="classifier_conv1")(x)  # Further reduced from 32 to 24
     x = layers.BatchNormalization(name="classifier_conv_bn1")(x)
     x = layers.LeakyReLU(alpha=0.1, name="classifier_conv_leaky1")(x)
     x = layers.MaxPooling1D(pool_size=2, name="classifier_maxpool1")(x)
     x = layers.Dropout(0.05, name="classifier_conv_dropout1")(x)
 
-    x = layers.Conv1D(32, kernel_size=3, padding='same', name="classifier_conv2")(x)
+    x = layers.Conv1D(12, kernel_size=3, padding='same', name="classifier_conv2")(x)  # Further reduced from 16 to 12
     x = layers.BatchNormalization(name="classifier_conv_bn2")(x)
     x = layers.LeakyReLU(alpha=0.1, name="classifier_conv_leaky2")(x)
     x = layers.MaxPooling1D(pool_size=2, name="classifier_maxpool2")(x)
@@ -176,13 +176,13 @@ def create_zeroshot_model(window_width=128, num_classes=18, embedding_dim=64):
 
     x = layers.Flatten(name="classifier_flatten")(x)
 
-    # Dense layers
-    x = layers.Dense(64, name="classifier_dense1")(x)
+    # Dense layers - further reduced units
+    x = layers.Dense(24, name="classifier_dense1")(x)  # Further reduced from 32 to 24
     x = layers.BatchNormalization(name="classifier_dense_bn1")(x)
     x = layers.LeakyReLU(alpha=0.1, name="classifier_dense_leaky1")(x)
     x = layers.Dropout(0.05, name="classifier_dense_dropout1")(x)
 
-    x = layers.Dense(32, name="classifier_dense2")(x)
+    x = layers.Dense(12, name="classifier_dense2")(x)  # Further reduced from 16 to 12
     x = layers.BatchNormalization(name="classifier_dense_bn2")(x)
     x = layers.LeakyReLU(alpha=0.1, name="classifier_dense_leaky2")(x)
     x = layers.Dropout(0.05, name="classifier_dense_dropout2")(x)
